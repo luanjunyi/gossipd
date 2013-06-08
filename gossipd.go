@@ -9,21 +9,34 @@ import (
 	"github.com/luanjunyi/gossipd/mqtt"
 )
 
+type CmdFunc func(header *mqtt.FixedHeader, conn *net.Conn)
+
 var g_debug = flag.Bool("d", false, "enable debug message")
 var g_port = flag.Int("p", 2001, "port of the broker to listen")
 
+var g_cmd_route = map[uint8]CmdFunc {
+	mqtt.CONNECT: mqtt.HandleConnect,
+}
+
 func handleConnection(conn *net.Conn) {
-	log.Println("Got new conection")
+	remoteAddr := (*conn).RemoteAddr()
+	log.Println("Got new conection", remoteAddr.Network(), remoteAddr.String())
 	for {
 		// Read fixed header
-		header := mqtt.ParseHeader(conn)
+		header := mqtt.ParseFixedHeader(conn)
 		if (header == nil) {
 			log.Println("reading header returned nil, will disconnect")
-			// FIXME: add disconnect mechanics
+			// FIXME: add full disconnect mechanics
+
 			return;
 		}
 		header.Show()
-		//log.Println("header:", string(header))
+
+		proc, found := g_cmd_route[header.MessageType]
+		if !found {
+			log.Panicf("Handler func not found for message type: %d", header.MessageType)
+		}
+		proc(header, conn)
 	}
 }
 
