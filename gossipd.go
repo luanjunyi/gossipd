@@ -9,7 +9,7 @@ import (
 	"github.com/luanjunyi/gossipd/mqtt"
 )
 
-type CmdFunc func(header *mqtt.FixedHeader, conn *net.Conn)
+type CmdFunc func(mqtt *mqtt.Mqtt, conn *net.Conn)
 
 var g_debug = flag.Bool("d", false, "enable debug message")
 var g_port = flag.Int("p", 2001, "port of the broker to listen")
@@ -23,21 +23,31 @@ func handleConnection(conn *net.Conn) {
 	log.Println("Got new conection", remoteAddr.Network(), remoteAddr.String())
 	for {
 		// Read fixed header
-		header := mqtt.ParseFixedHeader(conn)
-		if (header == nil) {
+        fixed_header, body := mqtt.ReadCompleteCommand(conn)
+		if (fixed_header == nil) {
 			log.Println("reading header returned nil, will disconnect")
 			// FIXME: add full disconnect mechanics
 
 			return;
 		}
-		header.Show()
 
-		proc, found := g_cmd_route[header.MessageType]
-		if !found {
-			log.Panicf("Handler func not found for message type: %d", header.MessageType)
+		mqtt, err := mqtt.DecodeAfterFixedHeader(fixed_header, body)
+		if (err != nil) {
+			log.Println("read command body failed:", err.Error())
 		}
-		proc(header, conn)
+
+		proc, found := g_cmd_route[fixed_header.MessageType]
+		if !found {
+			log.Panicf("Handler func not found for message type: %d", fixed_header.MessageType)
+		}
+		proc(mqtt, conn)
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Println("got panic:", r, "will close connection")
+		}
+		(*conn).Close()
+	}()
 }
 
 func main() {

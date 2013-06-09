@@ -33,6 +33,17 @@ const(
     NOT_AUTHORIZED
 )
 
+type Mqtt struct{
+    FixedHeader *FixedHeader
+    ProtocolName, TopicName, ClientId, WillTopic, WillMessage, Username, Password string
+    ProtocolVersion uint8
+    ConnectFlags *ConnectFlags
+    KeepAliveTimer, MessageId uint16
+    Data []byte
+    Topics []string
+    Topics_qos []uint8
+    ReturnCode uint8
+}
 
 type ConnectInfo struct {
     Protocol string // Must be 'MQIsdp' for now
@@ -58,19 +69,52 @@ type ConnectFlags struct{
     UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
     WillQos uint8
 }
-type Mqtt struct{
-    Header *FixedHeader
-    ProtocolName, TopicName, ClientId, WillTopic, WillMessage, Username, Password string
-    ProtocolVersion uint8
-    ConnectFlags *ConnectFlags
-    KeepAliveTimer, MessageId uint16
-    Data []byte
-    Topics []string
-    Topics_qos []uint8
-    ReturnCode uint8
+
+func (mqtt *Mqtt)Show() {
+	mqtt.FixedHeader.Show()
+	mqtt.ConnectFlags.Show()
+
+    fmt.Println("ProtocolName:", mqtt.ProtocolName)
+	fmt.Println("Version:", mqtt.ProtocolVersion)
+	fmt.Println("TopicName:", mqtt.TopicName)
+	fmt.Println("ClientId:", mqtt.ClientId)
+	fmt.Println("WillTopic:", mqtt.WillTopic)
+	fmt.Println("WillMessage:", mqtt.WillMessage)
+	fmt.Println("Username:", mqtt.Username)
+	fmt.Println("Password:", mqtt.Password)
+	fmt.Println("KeepAliveTimer:", mqtt.KeepAliveTimer)
+	fmt.Println("MessageId:", mqtt.MessageId)
+
+	fmt.Println("Data:", mqtt.Data)
+	fmt.Println("Topics:", len(mqtt.Topics))
+	for i := 0; i < len(mqtt.Topics); i++ {
+		fmt.Printf("(%s) (qos=%d)\n", mqtt.Topics[i], mqtt.Topics_qos[i])
+	}
+	fmt.Println("ReturnCode:", mqtt.ReturnCode)
 }
 
-func ParseFixedHeader(conn *net.Conn) *FixedHeader{
+func (header *FixedHeader)Show() {
+	fmt.Println("header detail:")
+	fmt.Println("message type: ", MessageTypeStr(header.MessageType))
+	fmt.Println("DupFlag: ", header.DupFlag)
+	fmt.Println("Retain: ", header.Retain)
+	fmt.Println("QOS: ", header.QosLevel)
+	fmt.Println("length: ", header.Length)
+	fmt.Println("\n=====================\n")
+}
+
+func (flags *ConnectFlags)Show() {
+	fmt.Println("connect flags detail:")
+    fmt.Println("UsernameFlag:", flags.UsernameFlag)
+	fmt.Println("PasswordFlag:", flags.PasswordFlag)
+	fmt.Println("WillRetain:", flags.WillRetain)
+	fmt.Println("WillFlag:", flags.WillFlag)
+	fmt.Println("WillQos:", flags.WillQos)
+	fmt.Println("CleanSession:", flags.CleanSession)
+	fmt.Println("\n=====================\n")
+}
+
+func ParseFixedHeader(conn *net.Conn) *FixedHeader {
 	var buf = make([]byte, 2)
 	n, _ := io.ReadFull(*conn, buf)
 	if n != len(buf) {
@@ -90,12 +134,29 @@ func ParseFixedHeader(conn *net.Conn) *FixedHeader{
     return header
 }
 
+func ReadCompleteCommand(conn *net.Conn) (*FixedHeader, []byte) {
+	fixed_header := ParseFixedHeader(conn)
+	if fixed_header == nil {
+		log.Panic("failed to read fixed header")
+	}
+	length := fixed_header.Length
+	buf := make([]byte, length)
+	n, _ := io.ReadFull(*conn, buf)
+	if uint32(n) != length {
+		log.Panicf("failed to read %d bytes specified in fixed header, only %d read", length, n)
+	}
+	log.Printf("Complete command(%s) read into buffer\n", MessageTypeStr(fixed_header.MessageType))
+
+	return fixed_header, buf
+}
+
 // CONNECT parse
 func parseConnectInfo(buf []byte) *ConnectInfo {
 	var info = new(ConnectInfo)
 	info.Protocol, buf = parseUTF8(buf)
 	info.Version, buf = parseUint8(buf)
-	flagByte := buf[1]
+	flagByte := buf[0]
+	log.Println("parsing connect flag:", flagByte)
 	info.UsernameFlag = (flagByte & 0x80) > 0
 	info.PasswordFlag = (flagByte & 0x40) > 0
 	info.WillRetain = (flagByte & 0x20) > 0
@@ -123,14 +184,6 @@ func (con_info *ConnectInfo)Show() {
 
 // Fixed header parse
 
-func (header *FixedHeader)Show() {
-	fmt.Println("header detail:")
-	fmt.Println("message type: ", MessageTypeStr(header.MessageType))
-	fmt.Println("DupFlag: ", header.DupFlag)
-	fmt.Println("Retain: ", header.Retain)
-	fmt.Println("QOS: ", header.QosLevel)
-	fmt.Println("length: ", header.Length)
-}
 
 
 func decodeVarLength(cur byte, conn *net.Conn) uint32 {
