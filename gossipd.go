@@ -19,6 +19,14 @@ var g_cmd_route = map[uint8]CmdFunc {
 }
 
 func handleConnection(conn *net.Conn) {
+	defer func() {
+		log.Println("executing defered func in handleConnection")
+		if r := recover(); r != nil {
+			log.Println("got panic:", r, "will close connection")
+		}
+		(*conn).Close()
+	}()
+
 	remoteAddr := (*conn).RemoteAddr()
 	log.Println("Got new conection", remoteAddr.Network(), remoteAddr.String())
 	for {
@@ -42,12 +50,7 @@ func handleConnection(conn *net.Conn) {
 		}
 		proc(mqtt, conn)
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			log.Println("got panic:", r, "will close connection")
-		}
-		(*conn).Close()
-	}()
+
 }
 
 func main() {
