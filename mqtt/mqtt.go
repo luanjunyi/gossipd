@@ -7,72 +7,22 @@ import (
 	"log"
 )
 
-const(
-    CONNECT = uint8(iota + 1)
-    CONNACK
-    PUBLISH
-    PUBACK
-    PUBREC
-    PUBREL
-    PUBCOMP
-    SUBSCRIBE
-    SUBACK
-    UNSUBSCRIBE
-    UNSUBACK
-    PINGREQ
-    PINGRESP
-    DISCONNECT
-)
-
-const(
-    ACCEPTED = uint8(iota)
-    UNACCEPTABLE_PROTOCOL_VERSION
-    IDENTIFIER_REJECTED
-    SERVER_UNAVAILABLE
-    BAD_USERNAME_OR_PASSWORD
-    NOT_AUTHORIZED
-)
-
-type Mqtt struct{
-    FixedHeader *FixedHeader
-    ProtocolName, TopicName, ClientId, WillTopic, WillMessage, Username, Password string
-    ProtocolVersion uint8
-    ConnectFlags *ConnectFlags
-    KeepAliveTimer, MessageId uint16
-    Data []byte
-    Topics []string
-    Topics_qos []uint8
-    ReturnCode uint8
-}
-
-type ConnectInfo struct {
-    Protocol string // Must be 'MQIsdp' for now
-    Version uint8
-    UsernameFlag bool
-    PasswordFlag bool
-    WillRetain bool
-    WillQos uint8
-    WillFlag bool
-    CleanSession bool
-    Keepalive uint16
-}
-
-type FixedHeader struct {
-    MessageType uint8
-    DupFlag bool
-	Retain bool
-    QosLevel uint8
-    Length uint32
-}
-
-type ConnectFlags struct{
-    UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
-    WillQos uint8
-}
+// Glabal status
+var G_clients map[string]*ClientRep = make(map[string]*ClientRep)
+var G_subs map[string]map[string]uint8 = make(map[string]map[string]uint8)
 
 func (mqtt *Mqtt)Show() {
-	mqtt.FixedHeader.Show()
-	mqtt.ConnectFlags.Show()
+	if mqtt.FixedHeader != nil {
+		mqtt.FixedHeader.Show()
+	} else {
+		log.Println("Fixed header is nil")
+	}
+
+	if mqtt.ConnectFlags != nil {
+		mqtt.ConnectFlags.Show()
+	} else {
+		log.Println("ConnectFlags is nil")
+	}
 
     fmt.Println("ProtocolName:", mqtt.ProtocolName)
 	fmt.Println("Version:", mqtt.ProtocolVersion)
@@ -137,7 +87,8 @@ func ParseFixedHeader(conn *net.Conn) *FixedHeader {
 func ReadCompleteCommand(conn *net.Conn) (*FixedHeader, []byte) {
 	fixed_header := ParseFixedHeader(conn)
 	if fixed_header == nil {
-		log.Panic("failed to read fixed header")
+		log.Println("failed to read fixed header")
+		return nil, make([]byte, 0)
 	}
 	length := fixed_header.Length
 	buf := make([]byte, length)
@@ -240,4 +191,70 @@ func MessageTypeStr(mt uint8) string {
 		"DISCONNEC"}
 	return strArray[mt]
 }
+
+// Types
+const(
+    CONNECT = uint8(iota + 1)
+    CONNACK
+    PUBLISH
+    PUBACK
+    PUBREC
+    PUBREL
+    PUBCOMP
+    SUBSCRIBE
+    SUBACK
+    UNSUBSCRIBE
+    UNSUBACK
+    PINGREQ
+    PINGRESP
+    DISCONNECT
+)
+
+const(
+    ACCEPTED = uint8(iota)
+    UNACCEPTABLE_PROTOCOL_VERSION
+    IDENTIFIER_REJECTED
+    SERVER_UNAVAILABLE
+    BAD_USERNAME_OR_PASSWORD
+    NOT_AUTHORIZED
+)
+
+type Mqtt struct{
+    FixedHeader *FixedHeader
+    ProtocolName, TopicName, ClientId, WillTopic, WillMessage, Username, Password string
+    ProtocolVersion uint8
+    ConnectFlags *ConnectFlags
+    KeepAliveTimer, MessageId uint16
+    Data []byte
+    Topics []string
+    Topics_qos []uint8
+    ReturnCode uint8
+}
+
+type ConnectInfo struct {
+    Protocol string // Must be 'MQIsdp' for now
+    Version uint8
+    UsernameFlag bool
+    PasswordFlag bool
+    WillRetain bool
+    WillQos uint8
+    WillFlag bool
+    CleanSession bool
+    Keepalive uint16
+}
+
+type FixedHeader struct {
+    MessageType uint8
+    DupFlag bool
+	Retain bool
+    QosLevel uint8
+    Length uint32
+}
+
+type ConnectFlags struct{
+    UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
+    WillQos uint8
+}
+
+
 
