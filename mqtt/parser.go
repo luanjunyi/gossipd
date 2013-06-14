@@ -201,7 +201,11 @@ func CreateMqtt(msg_type uint8) *Mqtt {
 	mqtt.ConnectFlags = connect_flags
 
 	switch msg_type {
+		
 	case CONNACK: {
+
+	}
+	case SUBACK: {
 
 	}
 	default: {

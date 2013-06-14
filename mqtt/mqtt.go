@@ -7,8 +7,10 @@ import (
 	"log"
 )
 
-// Glabal status
+/* Glabal status */
 var G_clients map[string]*ClientRep = make(map[string]*ClientRep)
+// Map topic => sub
+// sub is implemented as map, key is client_id, value is qos
 var G_subs map[string]map[string]uint8 = make(map[string]map[string]uint8)
 
 func (mqtt *Mqtt)Show() {
@@ -255,6 +257,7 @@ type ConnectFlags struct{
     UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
     WillQos uint8
 }
+
 
 
 
