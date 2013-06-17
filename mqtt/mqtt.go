@@ -191,6 +191,9 @@ func MessageTypeStr(mt uint8) string {
 		"PINGREQ",
 		"PINGRESP",
 		"DISCONNEC"}
+	if mt > uint8(len(strArray)) {
+		return "Undefined MessageType"
+	}
 	return strArray[mt]
 }
 

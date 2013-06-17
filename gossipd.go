@@ -17,6 +17,7 @@ var g_port = flag.Int("p", 2001, "port of the broker to listen")
 var g_cmd_route = map[uint8]CmdFunc {
 	mqtt.CONNECT: mqtt.HandleConnect,
 	mqtt.SUBSCRIBE: mqtt.HandleSubscribe,
+	mqtt.UNSUBSCRIBE: mqtt.HandleUnsubscribe,
 }
 
 func handleConnection(conn *net.Conn) {
@@ -44,17 +45,25 @@ func handleConnection(conn *net.Conn) {
 			return
 		}
 
-		mqtt, err := mqtt.DecodeAfterFixedHeader(fixed_header, body)
+		mqtt_parsed, err := mqtt.DecodeAfterFixedHeader(fixed_header, body)
 		if (err != nil) {
 			log.Println("read command body failed:", err.Error())
 		}
 
+		var client_id string
+		if client == nil {
+			client_id = ""
+		} else {
+			client_id = client.ClientId
+		}
+		log.Printf("Got request: %s from %s\n", mqtt.MessageTypeStr(fixed_header.MessageType), client_id)
 		proc, found := g_cmd_route[fixed_header.MessageType]
 		if !found {
- 			log.Printf("Handler func not found for message type: %d\n", fixed_header.MessageType)
+ 			log.Printf("Handler func not found for message type: %d(%s)\n",
+				fixed_header.MessageType, mqtt.MessageTypeStr(fixed_header.MessageType))
 			return
 		}
-		proc(mqtt, conn, &client)
+		proc(mqtt_parsed, conn, &client)
 	}
 
 }

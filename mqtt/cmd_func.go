@@ -4,12 +4,13 @@ import (
 	"net"
 	"log"
 	"sync"
+	"fmt"
 )
 
 // Handle CONNECT
 
 func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
-	mqtt.Show()
+	//mqtt.Show()
 	client_id := mqtt.ClientId
 
 	log.Println("Hanling CONNECT, client id:", client_id)
@@ -59,7 +60,7 @@ func SendConnack(rc uint8, conn *net.Conn, lock *sync.Mutex) {
 func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	client_id := (*client).mqtt.ClientId
 	log.Printf("Handling SUBSCRIBE, client_id: %s\n", client_id)
-	mqtt.Show()
+	//mqtt.Show()
 
 	client_rep := G_clients[client_id]
 	if client_rep == nil {
@@ -89,6 +90,9 @@ func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 		subs[client_id] = qos
 	}
 	log.Println("Subscriptions are all processed, will send SUBACK")
+
+	showSubscriptions()
+
 	SendSuback(mqtt.MessageId, mqtt.Topics_qos, conn, client_rep.WriteLock)
 }
 
@@ -97,6 +101,53 @@ func SendSuback(msg_id uint16, qos_list []uint8, conn *net.Conn, lock *sync.Mute
 	resp.MessageId = msg_id
 	resp.Topics_qos = qos_list
 
+	bytes, _ := Encode(resp)
+	MqttSendToClient(bytes, conn, lock)
+}
+
+/* Handle UNSUBSCRIBE */
+
+func HandleUnsubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
+	client_id := (*client).mqtt.ClientId
+	log.Printf("Handling UNSUBSCRIBE client_id: %s\n", client_id)
+
+	client_rep := G_clients[client_id]
+	if client_rep == nil {
+		log.Panicf("client_id(%d) not found in the list, will close connection\n", client_id)
+	}
+
+	if client_rep != *client {
+		log.Panicf("client_id(%d) has inconsistent ClientRep, will close current connecton\n", client_id)
+		return
+	}
+
+	for i := 0; i < len(mqtt.Topics); i++ {
+		topic := mqtt.Topics[i]
+
+		log.Printf("unsubscribing client(%s) from topic(%s)\n",
+			client_id, topic)
+
+		subs := G_subs[topic]
+		if subs == nil {
+			log.Printf("topic(%s) has no subscription, no need to unsubscribe\n", topic)
+		} else {
+			delete(subs, client_id)
+			if len(subs) == 0 {
+				delete(G_subs, topic)
+				log.Printf("last subscription of topic(%s) is removed, so this topic is removed as well\n", topic)
+			}
+		}
+	}
+	log.Println("unsubscriptions are all processed, will send UNSUBACK")
+
+	showSubscriptions()
+
+	SendUnsuback(mqtt.MessageId, conn, client_rep.WriteLock)
+}
+
+func SendUnsuback(msg_id uint16, conn *net.Conn, lock *sync.Mutex) {
+	resp := CreateMqtt(UNSUBACK)
+	resp.MessageId = msg_id
 	bytes, _ := Encode(resp)
 	MqttSendToClient(bytes, conn, lock)
 }
@@ -112,4 +163,14 @@ func MqttSendToClient(bytes []byte, conn *net.Conn, lock *sync.Mutex) {
 	}
 
 	(*conn).Write(bytes)
+}
+
+func showSubscriptions() {
+	fmt.Printf("Global Subscriptions: %d topics\n", len(G_subs))
+	for topic, subs := range(G_subs) {
+		fmt.Printf("\t%s: %d subscriptions\n", topic, len(subs))
+		for client_id, qos := range(subs) {
+			fmt.Println("\t\t", client_id, qos)
+		}
+	}
 }
