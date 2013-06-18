@@ -2,6 +2,7 @@ package mqtt
 
 import (
 	"fmt"
+	"sync"
 	"net"
 	"io"
 	"log"
@@ -9,9 +10,11 @@ import (
 
 /* Glabal status */
 var G_clients map[string]*ClientRep = make(map[string]*ClientRep)
+var G_clients_lock *sync.Mutex = new(sync.Mutex)
 // Map topic => sub
 // sub is implemented as map, key is client_id, value is qos
 var G_subs map[string]map[string]uint8 = make(map[string]map[string]uint8)
+var G_subs_lock *sync.Mutex = new(sync.Mutex)
 
 func (mqtt *Mqtt)Show() {
 	if mqtt.FixedHeader != nil {

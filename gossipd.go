@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"time"
 	"runtime/debug"
 	"github.com/luanjunyi/gossipd/mqtt"
 )
@@ -18,10 +19,10 @@ var g_cmd_route = map[uint8]CmdFunc {
 	mqtt.CONNECT: mqtt.HandleConnect,
 	mqtt.SUBSCRIBE: mqtt.HandleSubscribe,
 	mqtt.UNSUBSCRIBE: mqtt.HandleUnsubscribe,
+	mqtt.PINGREQ: mqtt.HandlePingreq,
 }
 
 func handleConnection(conn *net.Conn) {
-
 	remoteAddr := (*conn).RemoteAddr()
 
 	defer func() {
@@ -34,20 +35,20 @@ func handleConnection(conn *net.Conn) {
 	}()
 
 	var client *mqtt.ClientRep = nil
-
-	log.Println("Got new conection", remoteAddr.Network(), remoteAddr.String())
+	var conn_str string = fmt.Sprintf("%s:%s", string(remoteAddr.Network()), remoteAddr.String())
+	log.Println("Got new conection", conn_str)
 	for {
 		// Read fixed header
         fixed_header, body := mqtt.ReadCompleteCommand(conn)
 		if (fixed_header == nil) {
-			log.Println("reading header returned nil, will disconnect")
+			log.Println(conn_str, "reading header returned nil, will disconnect")
 			// FIXME: add full disconnect mechanics
 			return
 		}
 
 		mqtt_parsed, err := mqtt.DecodeAfterFixedHeader(fixed_header, body)
 		if (err != nil) {
-			log.Println("read command body failed:", err.Error())
+			log.Println(conn_str, "read command body failed:", err.Error())
 		}
 
 		var client_id string
@@ -68,12 +69,43 @@ func handleConnection(conn *net.Conn) {
 
 }
 
+func CheckTimeout() {
+	defer func() {
+		mqtt.G_clients_lock.Unlock()
+	}()
+	for {
+		log.Printf("Checking clients timeout")
+		mqtt.G_clients_lock.Lock()
+		now := time.Now().Unix()
+		for client_id, client := range mqtt.G_clients {
+			last := client.LastTime
+			timeout := int64(client.Mqtt.KeepAliveTimer)
+			deadline := int64(float64(last) + float64(timeout) * 1.5)
+			if deadline < now {
+				mqtt.DoDisconnect(client)
+				log.Printf("clinet(%s) is timeout, kicked out",
+					client_id)
+			} else {
+				log.Printf("client(%s) will be kicked out in %d seconds\n",
+					client_id,
+					now - deadline)
+			}
+		}
+		mqtt.G_clients_lock.Unlock()
+
+		// FIXME: use longer sleep time like 60 seconds
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Printf("Gossipd kicking off, listening localhost:%d", *g_port)
 
 	link, _ := net.Listen("tcp", fmt.Sprintf(":%d", *g_port))
+
+	go CheckTimeout()
 	
 	for {
 		conn, err := link.Accept()

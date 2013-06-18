@@ -28,6 +28,7 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 		return
 	}
 
+	G_clients_lock.Lock()
 	client_rep, existed := G_clients[client_id]
 	if existed {
 		log.Printf("%s existed, will close old connection", client_id)
@@ -41,7 +42,10 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	}
 
 	G_clients[client_id] = client_rep
+	G_clients_lock.Unlock()
+
 	*client = client_rep
+
 	SendConnack(ACCEPTED, conn, client_rep.WriteLock)
 	log.Printf("New client is all set and CONNACK is sent")
 }
@@ -58,21 +62,22 @@ func SendConnack(rc uint8, conn *net.Conn, lock *sync.Mutex) {
 /* Handle SUBSCRIBE */
 
 func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
-	client_id := (*client).mqtt.ClientId
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending SUBSCRIBE")
+		return
+	}
+
+	client_id := (*client).Mqtt.ClientId
 	log.Printf("Handling SUBSCRIBE, client_id: %s\n", client_id)
-	//mqtt.Show()
+	client_rep := *client
+	client_rep.UpdateLastTime()
 
-	client_rep := G_clients[client_id]
-	if client_rep == nil {
-		log.Panicf("client_id(%d) not found in the list, will close connection\n", client_id)
-		return
-	}
+	defer func() {
+		G_subs_lock.Unlock()
+		SendSuback(mqtt.MessageId, mqtt.Topics_qos, conn, client_rep.WriteLock)
+	}()
 
-	if client_rep != *client {
-		log.Panicf("client_id(%d) has inconsistent ClientRep, will close current connecton\n", client_id)
-		return
-	}
-
+	G_subs_lock.Lock()
 	for i := 0; i < len(mqtt.Topics); i++ {
 		topic := mqtt.Topics[i]
 		qos := mqtt.Topics_qos[i]
@@ -90,10 +95,7 @@ func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 		subs[client_id] = qos
 	}
 	log.Println("Subscriptions are all processed, will send SUBACK")
-
 	showSubscriptions()
-
-	SendSuback(mqtt.MessageId, mqtt.Topics_qos, conn, client_rep.WriteLock)
 }
 
 func SendSuback(msg_id uint16, qos_list []uint8, conn *net.Conn, lock *sync.Mutex) {
@@ -108,19 +110,22 @@ func SendSuback(msg_id uint16, qos_list []uint8, conn *net.Conn, lock *sync.Mute
 /* Handle UNSUBSCRIBE */
 
 func HandleUnsubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
-	client_id := (*client).mqtt.ClientId
-	log.Printf("Handling UNSUBSCRIBE client_id: %s\n", client_id)
-
-	client_rep := G_clients[client_id]
-	if client_rep == nil {
-		log.Panicf("client_id(%d) not found in the list, will close connection\n", client_id)
-	}
-
-	if client_rep != *client {
-		log.Panicf("client_id(%d) has inconsistent ClientRep, will close current connecton\n", client_id)
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending UNSUBSCRIBE")
 		return
 	}
 
+	client_id := (*client).Mqtt.ClientId
+	log.Printf("Handling UNSUBSCRIBE, client_id: %s\n", client_id)
+	client_rep := *client
+	client_rep.UpdateLastTime()
+
+	defer func() {
+		G_subs_lock.Unlock()
+		SendUnsuback(mqtt.MessageId, conn, client_rep.WriteLock)
+	}()
+
+	G_subs_lock.Lock()
 	for i := 0; i < len(mqtt.Topics); i++ {
 		topic := mqtt.Topics[i]
 
@@ -141,13 +146,33 @@ func HandleUnsubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	log.Println("unsubscriptions are all processed, will send UNSUBACK")
 
 	showSubscriptions()
-
-	SendUnsuback(mqtt.MessageId, conn, client_rep.WriteLock)
 }
 
 func SendUnsuback(msg_id uint16, conn *net.Conn, lock *sync.Mutex) {
 	resp := CreateMqtt(UNSUBACK)
 	resp.MessageId = msg_id
+	bytes, _ := Encode(resp)
+	MqttSendToClient(bytes, conn, lock)
+}
+
+/* Handle PINGREQ */
+
+func HandlePingreq(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending PINGREQ")
+		return
+	}
+
+	client_id := (*client).Mqtt.ClientId
+	log.Printf("Handling PINGREQ, client_id: %s\n", client_id)
+	client_rep := *client
+	client_rep.UpdateLastTime()
+
+	SendPingresp(conn, client_rep.WriteLock)
+}
+
+func SendPingresp(conn *net.Conn, lock *sync.Mutex) {
+	resp := CreateMqtt(PINGRESP)
 	bytes, _ := Encode(resp)
 	MqttSendToClient(bytes, conn, lock)
 }
@@ -161,8 +186,26 @@ func MqttSendToClient(bytes []byte, conn *net.Conn, lock *sync.Mutex) {
 			lock.Unlock()
 		}()
 	}
-
 	(*conn).Write(bytes)
+}
+
+// Here the G_clients_lock must already be aquired
+func DoDisconnect(client *ClientRep) {
+	client_id := client.Mqtt.ClientId
+
+	log.Println("Disconnecting client:", client_id)
+
+	delete(G_clients, client_id)
+
+	// FIXME: add code to deal with session
+	if client.Mqtt.ConnectFlags.CleanSession {
+
+	} else {
+
+	}
+
+	log.Printf("Closing socket of %s\n", client_id)
+	(*client.Conn).Close()
 }
 
 func showSubscriptions() {
@@ -174,3 +217,4 @@ func showSubscriptions() {
 		}
 	}
 }
+
