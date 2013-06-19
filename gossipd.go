@@ -5,7 +5,6 @@ import (
 	"flag"
 	"log"
 	"net"
-	"time"
 	"runtime/debug"
 	"github.com/luanjunyi/gossipd/mqtt"
 )
@@ -69,35 +68,6 @@ func handleConnection(conn *net.Conn) {
 
 }
 
-func CheckTimeout() {
-	defer func() {
-		mqtt.G_clients_lock.Unlock()
-	}()
-	for {
-		log.Printf("Checking clients timeout")
-		mqtt.G_clients_lock.Lock()
-		now := time.Now().Unix()
-		for client_id, client := range mqtt.G_clients {
-			last := client.LastTime
-			timeout := int64(client.Mqtt.KeepAliveTimer)
-			deadline := int64(float64(last) + float64(timeout) * 1.5)
-			if deadline < now {
-				mqtt.DoDisconnect(client)
-				log.Printf("clinet(%s) is timeout, kicked out",
-					client_id)
-			} else {
-				log.Printf("client(%s) will be kicked out in %d seconds\n",
-					client_id,
-					now - deadline)
-			}
-		}
-		mqtt.G_clients_lock.Unlock()
-
-		// FIXME: use longer sleep time like 60 seconds
-		time.Sleep(5 * time.Second)
-	}
-}
-
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
@@ -105,8 +75,6 @@ func main() {
 
 	link, _ := net.Listen("tcp", fmt.Sprintf(":%d", *g_port))
 
-	go CheckTimeout()
-	
 	for {
 		conn, err := link.Accept()
 		if err != nil {

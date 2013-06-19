@@ -14,6 +14,7 @@ type ClientRep struct {
 	Conn *net.Conn
 	WriteLock *sync.Mutex
 	LastTime int64 // Last Unix timestamp when recieved message from this client
+	Shuttingdown chan uint8
 
 	Mqtt *Mqtt
 }
@@ -29,5 +30,6 @@ func CreateClientRep(client_id string, conn *net.Conn, mqtt *Mqtt) *ClientRep {
 	rep.WriteLock = new(sync.Mutex)
 	rep.Mqtt = mqtt
 	rep.LastTime = time.Now().Unix()
+	rep.Shuttingdown = make(chan uint8, 1)
 	return rep
 }

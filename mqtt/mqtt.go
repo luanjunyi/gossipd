@@ -69,7 +69,7 @@ func (flags *ConnectFlags)Show() {
 	fmt.Println("\n=====================\n")
 }
 
-func ParseFixedHeader(conn *net.Conn) *FixedHeader {
+func ReadFixedHeader(conn *net.Conn) *FixedHeader {
 	var buf = make([]byte, 2)
 	n, _ := io.ReadFull(*conn, buf)
 	if n != len(buf) {
@@ -90,7 +90,7 @@ func ParseFixedHeader(conn *net.Conn) *FixedHeader {
 }
 
 func ReadCompleteCommand(conn *net.Conn) (*FixedHeader, []byte) {
-	fixed_header := ParseFixedHeader(conn)
+	fixed_header := ReadFixedHeader(conn)
 	if fixed_header == nil {
 		log.Println("failed to read fixed header")
 		return nil, make([]byte, 0)
@@ -139,8 +139,6 @@ func (con_info *ConnectInfo)Show() {
 }
 
 // Fixed header parse
-
-
 
 func decodeVarLength(cur byte, conn *net.Conn) uint32 {
 	length := uint32(0)

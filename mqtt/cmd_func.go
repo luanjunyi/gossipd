@@ -3,6 +3,7 @@ package mqtt
 import (
 	"net"
 	"log"
+	"time"
 	"sync"
 	"fmt"
 )
@@ -32,19 +33,20 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	client_rep, existed := G_clients[client_id]
 	if existed {
 		log.Printf("%s existed, will close old connection", client_id)
-		(*client_rep.Conn).Close()
-		client_rep.Conn = conn
-		// FIXME: Do we need extra steps for the locks?
-		client_rep.WriteLock = new(sync.Mutex)
+		ForceDisconnect(client_rep, nil)
+
 	} else {
 		log.Printf("Appears to be new client, will create ClientRep")
-		client_rep = CreateClientRep(client_id, conn, mqtt)
 	}
+
+	client_rep = CreateClientRep(client_id, conn, mqtt)
 
 	G_clients[client_id] = client_rep
 	G_clients_lock.Unlock()
 
 	*client = client_rep
+	go CheckTimeout(client_rep)
+	log.Println("Timeout checker go-routine started")
 
 	SendConnack(ACCEPTED, conn, client_rep.WriteLock)
 	log.Printf("New client is all set and CONNACK is sent")
@@ -57,7 +59,6 @@ func SendConnack(rc uint8, conn *net.Conn, lock *sync.Mutex) {
 	bytes, _ := Encode(resp)
 	MqttSendToClient(bytes, conn, lock)
 }
-
 
 /* Handle SUBSCRIBE */
 
@@ -177,8 +178,10 @@ func SendPingresp(conn *net.Conn, lock *sync.Mutex) {
 	MqttSendToClient(bytes, conn, lock)
 }
 
+
 /* Helper functions */
 
+// This is the main place to change if we need to use channel rather than lock
 func MqttSendToClient(bytes []byte, conn *net.Conn, lock *sync.Mutex) {
 	if lock != nil {
 		lock.Lock()
@@ -189,13 +192,53 @@ func MqttSendToClient(bytes []byte, conn *net.Conn, lock *sync.Mutex) {
 	(*conn).Write(bytes)
 }
 
-// Here the G_clients_lock must already be aquired
-func DoDisconnect(client *ClientRep) {
+/* Checking timeout */
+func CheckTimeout(client *ClientRep) {
+	interval := client.Mqtt.KeepAliveTimer
+	client_id := client.ClientId
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+
+	for {
+		select {
+		case <- ticker.C:
+			now := time.Now().Unix()
+			lastTimestamp := client.LastTime
+			deadline := int64(float64(lastTimestamp) + float64(interval) * 1.5)
+
+			if deadline < now {
+				ForceDisconnect(client, G_clients_lock)
+				log.Printf("clinet(%s) is timeout, kicked out",
+					client_id)
+			} else {
+				log.Printf("client(%s) will be kicked out in %d seconds\n",
+					client_id,
+					deadline - now)
+			}
+		case <- client.Shuttingdown:
+			log.Printf("client(%s) is being shutting down, stopped timeout checker")
+			return
+		}
+
+	}
+}
+
+func ForceDisconnect(client *ClientRep, lock *sync.Mutex) {
+
 	client_id := client.Mqtt.ClientId
 
 	log.Println("Disconnecting client:", client_id)
 
+	if lock != nil {
+		lock.Lock()
+		log.Println("lock accuired")
+	}
+
 	delete(G_clients, client_id)
+
+	if lock != nil {
+		lock.Unlock()
+		log.Println("lock released")
+	}
 
 	// FIXME: add code to deal with session
 	if client.Mqtt.ConnectFlags.CleanSession {
@@ -203,6 +246,9 @@ func DoDisconnect(client *ClientRep) {
 	} else {
 
 	}
+
+	client.Shuttingdown <- 1
+	log.Println("Sent 1 to shutdown channel")
 
 	log.Printf("Closing socket of %s\n", client_id)
 	(*client.Conn).Close()
