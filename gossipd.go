@@ -19,10 +19,12 @@ var g_cmd_route = map[uint8]CmdFunc {
 	mqtt.SUBSCRIBE: mqtt.HandleSubscribe,
 	mqtt.UNSUBSCRIBE: mqtt.HandleUnsubscribe,
 	mqtt.PINGREQ: mqtt.HandlePingreq,
+	mqtt.DISCONNECT: mqtt.HandleDisconnect,
 }
 
 func handleConnection(conn *net.Conn) {
 	remoteAddr := (*conn).RemoteAddr()
+	var client *mqtt.ClientRep = nil
 
 	defer func() {
 		log.Println("executing defered func in handleConnection")
@@ -30,10 +32,14 @@ func handleConnection(conn *net.Conn) {
 			log.Println("got panic:", r, "will close connection from", remoteAddr.Network(), remoteAddr.String())
 			debug.PrintStack()
 		}
+
+		if client != nil {
+			mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
+		}
 		(*conn).Close()
 	}()
 
-	var client *mqtt.ClientRep = nil
+
 	var conn_str string = fmt.Sprintf("%s:%s", string(remoteAddr.Network()), remoteAddr.String())
 	log.Println("Got new conection", conn_str)
 	for {

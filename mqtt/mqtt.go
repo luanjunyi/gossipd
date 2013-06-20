@@ -237,6 +237,11 @@ type Mqtt struct{
     ReturnCode uint8
 }
 
+type ConnectFlags struct{
+    UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
+    WillQos uint8
+}
+
 type ConnectInfo struct {
     Protocol string // Must be 'MQIsdp' for now
     Version uint8
@@ -256,12 +261,6 @@ type FixedHeader struct {
     QosLevel uint8
     Length uint32
 }
-
-type ConnectFlags struct{
-    UsernameFlag, PasswordFlag, WillRetain, WillFlag, CleanSession bool
-    WillQos uint8
-}
-
 
 
 

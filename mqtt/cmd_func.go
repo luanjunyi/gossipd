@@ -8,6 +8,11 @@ import (
 	"fmt"
 )
 
+const (
+	SEND_WILL = uint8(iota)
+	DONT_SEND_WILL
+)
+
 // Handle CONNECT
 
 func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
@@ -33,7 +38,7 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	client_rep, existed := G_clients[client_id]
 	if existed {
 		log.Printf("%s existed, will close old connection", client_id)
-		ForceDisconnect(client_rep, nil)
+		ForceDisconnect(client_rep, nil, DONT_SEND_WILL)
 
 	} else {
 		log.Printf("Appears to be new client, will create ClientRep")
@@ -178,6 +183,17 @@ func SendPingresp(conn *net.Conn, lock *sync.Mutex) {
 	MqttSendToClient(bytes, conn, lock)
 }
 
+/* Handle DISCONNECT */
+
+func HandleDisconnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending PINGREQ")
+		return
+	}
+
+	ForceDisconnect(*client, G_clients_lock, DONT_SEND_WILL)
+}
+
 
 /* Helper functions */
 
@@ -206,7 +222,7 @@ func CheckTimeout(client *ClientRep) {
 			deadline := int64(float64(lastTimestamp) + float64(interval) * 1.5)
 
 			if deadline < now {
-				ForceDisconnect(client, G_clients_lock)
+				ForceDisconnect(client, G_clients_lock, SEND_WILL)
 				log.Printf("clinet(%s) is timeout, kicked out",
 					client_id)
 			} else {
@@ -215,15 +231,14 @@ func CheckTimeout(client *ClientRep) {
 					deadline - now)
 			}
 		case <- client.Shuttingdown:
-			log.Printf("client(%s) is being shutting down, stopped timeout checker")
+			log.Printf("client(%s) is being shutting down, stopped timeout checker", client_id)
 			return
 		}
 
 	}
 }
 
-func ForceDisconnect(client *ClientRep, lock *sync.Mutex) {
-
+func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 	client_id := client.Mqtt.ClientId
 
 	log.Println("Disconnecting client:", client_id)
@@ -245,6 +260,15 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex) {
 
 	} else {
 
+	}
+
+	// FIXME: Send will if requested
+	if send_will == SEND_WILL && client.Mqtt.ConnectFlags.WillFlag {
+		will_topic := client.Mqtt.WillTopic
+		will_payload := client.Mqtt.WillMessage
+
+		log.Printf("Sent will for %s, topic:(%s), payload:(%s)\n",
+			client_id, will_topic, will_payload)
 	}
 
 	client.Shuttingdown <- 1
