@@ -16,10 +16,12 @@ var g_port = flag.Int("p", 2001, "port of the broker to listen")
 
 var g_cmd_route = map[uint8]CmdFunc {
 	mqtt.CONNECT: mqtt.HandleConnect,
+	mqtt.PUBLISH: mqtt.HandlePublish,
 	mqtt.SUBSCRIBE: mqtt.HandleSubscribe,
 	mqtt.UNSUBSCRIBE: mqtt.HandleUnsubscribe,
 	mqtt.PINGREQ: mqtt.HandlePingreq,
 	mqtt.DISCONNECT: mqtt.HandleDisconnect,
+
 }
 
 func handleConnection(conn *net.Conn) {

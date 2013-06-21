@@ -204,8 +204,10 @@ func CreateMqtt(msg_type uint8) *Mqtt {
 		
 	case CONNACK: {}
 	case SUBACK: {}
+	case PUBACK: {}
 	case UNSUBACK: {}
 	case PINGRESP: {}
+	case PUBLISH: {}
 
 	default: {
 		log.Panicf("Can't create Mqtt of type:%d", msg_type)

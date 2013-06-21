@@ -65,6 +65,70 @@ func SendConnack(rc uint8, conn *net.Conn, lock *sync.Mutex) {
 	MqttSendToClient(bytes, conn, lock)
 }
 
+/* Handle PUBLISH*/
+// FIXME: support qos = 2
+func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending PUBLISH")
+		return
+	}
+
+	client_id := (*client).Mqtt.ClientId
+	client_rep := *client
+	client_rep.UpdateLastTime()
+	topic := mqtt.TopicName
+	payload := string(mqtt.Data)
+	qos := mqtt.FixedHeader.QosLevel
+	retain := mqtt.FixedHeader.Retain
+	message_id := mqtt.MessageId
+	timestamp := time.Now().Unix()
+	log.Printf("Handling PUBLISH, client_id: %s, topic:(%s), payload:(%s), qos=%d, retain=%d\n",
+		client_id, topic, payload, qos, retain)
+
+	// Update global topic record
+	G_topics_lock.Lock()
+	topic_rep, existed := G_topics[topic]
+	if !existed {
+		topic_rep = CreateTopic(topic)
+		G_topics[topic] = topic_rep
+	}
+	if retain {
+		topic_rep.RetainedContent = payload
+		log.Printf("Set the payload as the current retain content of topic:%s\n", topic)
+	}
+	G_topics_lock.Unlock()
+
+	// Create new MQTT message
+	mqtt_msg := CreateMqttMessage(topic, payload, client_id, qos, message_id, timestamp)
+	msg_internal_id := mqtt_msg.InternalId
+	log.Println("Created new MQTT message, internal id:", msg_internal_id)
+
+	// Dispatch delivering jobs
+	G_subs_lock.Lock()
+	subs, found := G_subs[topic]
+	if found {
+		for dest_id, dest_qos := range(subs) {
+			go Deliver(dest_id, dest_qos, mqtt_msg)
+		}
+	}
+	G_subs_lock.Unlock()
+
+
+	log.Println("All delivering job dispatched")
+	// Send PUBACK if QOS is 1
+	if qos == 1 {
+		SendPuback(message_id, conn, client_rep.WriteLock)
+	}
+}
+
+func SendPuback(msg_id uint16, conn *net.Conn, lock *sync.Mutex) {
+	resp := CreateMqtt(PUBACK)
+	resp.MessageId = msg_id
+
+	bytes, _ := Encode(resp)
+	MqttSendToClient(bytes, conn, lock)
+}
+
 /* Handle SUBSCRIBE */
 
 func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
@@ -99,6 +163,8 @@ func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 
 		// FIXME: this may override existing subscription with higher QOS
 		subs[client_id] = qos
+
+		// FIXME: deal with retained message
 	}
 	log.Println("Subscriptions are all processed, will send SUBACK")
 	showSubscriptions()
@@ -187,7 +253,7 @@ func SendPingresp(conn *net.Conn, lock *sync.Mutex) {
 
 func HandleDisconnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	if *client == nil {
-		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending PINGREQ")
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending DISCONNECT")
 		return
 	}
 
@@ -277,6 +343,50 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 	log.Printf("Closing socket of %s\n", client_id)
 	(*client.Conn).Close()
 }
+
+func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
+	log.Printf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
+
+	// Get effective qos: the smaller of the publisher and the subscriber
+	qos := msg.Qos
+	if dest_qos < msg.Qos {
+		qos = dest_qos
+	}
+
+	// FIXME: Add code to deal with failure
+	resp := CreateMqtt(PUBLISH)
+	resp.TopicName = msg.Topic
+	if qos > 0 {
+		resp.MessageId = msg.MessageId
+	}
+	resp.FixedHeader.QosLevel = qos
+	resp.Data = []byte(msg.Payload)
+	
+	bytes, _ := Encode(resp)
+	G_clients_lock.Lock()
+	client_rep, found := G_clients[dest_client_id]
+	var conn *net.Conn
+	var lock *sync.Mutex
+	G_clients_lock.Unlock()
+	if found {
+		conn = client_rep.Conn
+		lock = client_rep.WriteLock
+	} else {
+		log.Printf("client(%s) is offline", dest_client_id)
+		return
+	}
+
+
+	lock.Lock()
+	defer func() {
+		lock.Unlock()
+	}()
+	// FIXME: add write deatline
+	(*conn).Write(bytes)
+	log.Printf("message sent by Write()")
+}
+
+
 
 func showSubscriptions() {
 	fmt.Printf("Global Subscriptions: %d topics\n", len(G_subs))
