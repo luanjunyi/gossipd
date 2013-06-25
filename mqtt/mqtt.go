@@ -16,6 +16,7 @@ var G_clients_lock *sync.Mutex = new(sync.Mutex)
 var G_subs map[string]map[string]uint8 = make(map[string]map[string]uint8)
 var G_subs_lock *sync.Mutex = new(sync.Mutex)
 
+
 func (mqtt *Mqtt)Show() {
 	if mqtt.FixedHeader != nil {
 		mqtt.FixedHeader.Show()

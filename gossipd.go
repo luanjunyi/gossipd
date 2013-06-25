@@ -49,7 +49,6 @@ func handleConnection(conn *net.Conn) {
         fixed_header, body := mqtt.ReadCompleteCommand(conn)
 		if (fixed_header == nil) {
 			log.Println(conn_str, "reading header returned nil, will disconnect")
-			// FIXME: add full disconnect mechanics
 			return
 		}
 
@@ -72,6 +71,7 @@ func handleConnection(conn *net.Conn) {
 			return
 		}
 		proc(mqtt_parsed, conn, &client)
+
 	}
 
 }

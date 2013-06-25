@@ -16,6 +16,7 @@ type MqttMessage struct {
 	MessageId uint16
 	InternalId uint64
 	CreatedAt int64
+	Retain bool
 }
 
 // InternalId -> Message
@@ -25,7 +26,7 @@ var G_messages_lock *sync.Mutex = new(sync.Mutex)
 
 func CreateMqttMessage(topic, payload, sender_id string,
 	qos uint8, message_id uint16,
-	created_at int64) *MqttMessage {
+	created_at int64, retain bool) *MqttMessage {
 
 	msg := new(MqttMessage)
 	msg.Topic = topic
@@ -35,6 +36,7 @@ func CreateMqttMessage(topic, payload, sender_id string,
 	msg.MessageId = message_id
 	msg.InternalId = GetNextMessageInternalId()
 	msg.CreatedAt = created_at
+	msg.Retain = retain
 
 	G_messages_lock.Lock()
 	G_messages[msg.InternalId] = msg
