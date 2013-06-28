@@ -89,6 +89,12 @@ func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	mqtt_msg := CreateMqttMessage(topic, payload, client_id, qos, message_id, timestamp, retain)
 	msg_internal_id := mqtt_msg.InternalId
 	log.Println("Created new MQTT message, internal id:", msg_internal_id)
+	
+	// FIXME: Modify to code below to store the message in Redis
+	// Should be a method of MqttMessage
+	mqtt_msg.Store()
+	tmp := GetMqttMessageById(msg_internal_id)
+	tmp.Show()
 
 	PublishMessage(mqtt_msg)
 
@@ -395,6 +401,8 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 	if dest_qos < msg.Qos {
 		qos = dest_qos
 	}
+
+
 
 
 	G_clients_lock.Lock()

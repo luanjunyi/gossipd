@@ -15,6 +15,7 @@ var G_clients_lock *sync.Mutex = new(sync.Mutex)
 // sub is implemented as map, key is client_id, value is qos
 var G_subs map[string]map[string]uint8 = make(map[string]map[string]uint8)
 var G_subs_lock *sync.Mutex = new(sync.Mutex)
+var G_redis_client *RedisClient = StartRedisClient()
 
 
 func (mqtt *Mqtt)Show() {
