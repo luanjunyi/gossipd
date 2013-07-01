@@ -53,6 +53,9 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	log.Println("Timeout checker go-routine started")
 
 	// FIXME: Add code to recover session
+	if !client_rep.Mqtt.ConnectFlags.CleanSession {
+		// Deliver flying messages
+	}
 
 	SendConnack(ACCEPTED, conn, client_rep.WriteLock)
 	log.Printf("New client is all set and CONNACK is sent")
