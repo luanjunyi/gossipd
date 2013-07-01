@@ -21,7 +21,7 @@ var g_cmd_route = map[uint8]CmdFunc {
 	mqtt.UNSUBSCRIBE: mqtt.HandleUnsubscribe,
 	mqtt.PINGREQ: mqtt.HandlePingreq,
 	mqtt.DISCONNECT: mqtt.HandleDisconnect,
-
+	mqtt.PUBACK: mqtt.HandlePuback,
 }
 
 func handleConnection(conn *net.Conn) {
@@ -33,9 +33,10 @@ func handleConnection(conn *net.Conn) {
 		if r := recover(); r != nil {
 			log.Println("got panic:", r, "will close connection from", remoteAddr.Network(), remoteAddr.String())
 			debug.PrintStack()
-			if client != nil {
-				mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
-			}
+
+		}
+		if client != nil {
+			mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
 		}
 		(*conn).Close()
 	}()

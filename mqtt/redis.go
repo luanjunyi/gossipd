@@ -12,7 +12,7 @@ import (
 var g_redis_lock *sync.Mutex = new(sync.Mutex)
 
 type RedisClient struct {
-	conn *redis.Conn
+	Conn *redis.Conn
 }
 
 func StartRedisClient() *RedisClient {
@@ -25,7 +25,7 @@ func StartRedisClient() *RedisClient {
 	}
 
 	client := new(RedisClient)
-	client.conn = &conn
+	client.Conn = &conn
 	return client
 }
 
@@ -42,7 +42,7 @@ func (client *RedisClient) Store(key string, value interface{}) {
 		log.Panic("gob encoding failed", err)
 	}
 
-	ret, err := (*client.conn).Do("SET", key, buf.Bytes())
+	ret, err := (*client.Conn).Do("SET", key, buf.Bytes())
 	if err != nil {
 		log.Panic("redis failed to set key(%s): %s", key, err)
 	}
@@ -56,7 +56,7 @@ func (client *RedisClient) Fetch(key string, value interface{}) {
 	defer g_redis_lock.Unlock()
 	log.Printf("aqquired g_redis_lock")
 
-	str, err := redis.Bytes((*client.conn).Do("GET", key))
+	str, err := redis.Bytes((*client.Conn).Do("GET", key))
 	if err != nil {
 		log.Printf("redis failed to fetch key(%s): %s",
 			key, err)
@@ -71,27 +71,47 @@ func (client *RedisClient) Fetch(key string, value interface{}) {
 	}
 }
 
-func (client *RedisClient) AddFlyingMessage(dest_id string,
-	                                        fly_msg *FlyingMessage) {
-	log.Printf("Adding flying message to redis client:(%s), message_id:(%d)",
-		dest_id, fly_msg.ClientMessageId)
+func (client *RedisClient) Delete(key string) {
+	g_redis_lock.Lock()
+	defer g_redis_lock.Unlock()
+	(*client.Conn).Do("DEL", key)
+}
 
-	key := fmt.Sprintf("gossipd.client-msg.%s", dest_id)
+func (client *RedisClient) GetFlyingMessagesForClient(client_id string) *map[uint16]FlyingMessage {
+	key := fmt.Sprintf("gossipd.client-msg.%s", client_id)
 	messages := make(map[uint16]FlyingMessage)
 	client.Fetch(key, &messages)
+	return &messages
+}
 
-	fmt.Println(key, "fetched from redis")
-	
-	messages[fly_msg.ClientMessageId] = *fly_msg
+func (client *RedisClient) SetFlyingMessagesForClient(client_id string,
+	messages *map[uint16]FlyingMessage) {
+	key := fmt.Sprintf("gossipd.client-msg.%s", client_id)
 	client.Store(key, messages)
-	log.Printf("flying message added to key(%s)", key)
+}
+
+func (client *RedisClient) RemoveAllFlyingMessagesForClient(client_id string) {
+	key := fmt.Sprintf("gossipd.client-msg.%s", client_id)
+	g_redis_lock.Lock()
+	defer g_redis_lock.Unlock()
+	(*client.Conn).Do("DEL", key)
+}
+
+func (client *RedisClient) AddFlyingMessage(dest_id string,
+	                                        fly_msg *FlyingMessage) {
+
+	messages := *client.GetFlyingMessagesForClient(dest_id)
+	messages[fly_msg.ClientMessageId] = *fly_msg
+	client.SetFlyingMessagesForClient(dest_id, &messages)
+	log.Printf("Added flying message to redis client:(%s), message_id:(%d)",
+		dest_id, fly_msg.ClientMessageId)
 }
 
 func (client *RedisClient) Expire(key string, sec uint64) {
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
 
-	_, err := (*client.conn).Do("EXPIRE", key, sec)
+	_, err := (*client.Conn).Do("EXPIRE", key, sec)
 	if err != nil {
 		log.Panic("failed to expire key(%s)", key)
 	}

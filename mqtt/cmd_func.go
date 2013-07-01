@@ -54,7 +54,19 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 
 	// FIXME: Add code to recover session
 	if !client_rep.Mqtt.ConnectFlags.CleanSession {
-		// Deliver flying messages
+		// deliver flying messages
+		DeliverOnConnection(client_id)
+		// restore subscriptions to client_rep
+		subs := new(map[string]uint8)
+		key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
+		G_redis_client.Fetch(key, subs)
+		client_rep.Subscriptions = *subs
+
+	} else {
+		// Remove subscriptions and flying message
+		RemoveAllSubscriptionsOnConnect(client_id)
+		empty := make(map[uint16]FlyingMessage)
+		G_redis_client.SetFlyingMessagesForClient(client_id, &empty)
 	}
 
 	SendConnack(ACCEPTED, conn, client_rep.WriteLock)
@@ -105,7 +117,6 @@ func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 func SendPuback(msg_id uint16, conn *net.Conn, lock *sync.Mutex) {
 	resp := CreateMqtt(PUBACK)
 	resp.MessageId = msg_id
-
 	bytes, _ := Encode(resp)
 	MqttSendToClient(bytes, conn, lock)
 }
@@ -256,6 +267,31 @@ func HandleDisconnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	ForceDisconnect(*client, G_clients_lock, DONT_SEND_WILL)
 }
 
+/* Handle PUBACK */
+func HandlePuback(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
+	if *client == nil {
+		log.Panicf("client_resp is nil, that means we don't have ClientRep for this client sending DISCONNECT")
+		return
+	}
+
+	client_id := (*client).Mqtt.ClientId
+	message_id := mqtt.MessageId
+	log.Printf("Handling PUBACK, client:(%s), message_id:(%d)", client_id, message_id)
+
+	messages := G_redis_client.GetFlyingMessagesForClient(client_id)
+
+	flying_msg, found := (*messages)[message_id]
+
+	if !found || flying_msg.Status != PENDING_ACK {
+		log.Printf("message(id=%d, client=%s) is not PENDING_ACK, will ignore this PUBACK",
+			message_id, client_id)
+	} else {
+		delete(*messages, message_id)
+		G_redis_client.SetFlyingMessagesForClient(client_id, messages)
+		log.Printf("acked flying message(id=%d), client:(%s)", message_id, client_id)
+	}	
+}
+
 
 /* Helper functions */
 
@@ -301,9 +337,16 @@ func CheckTimeout(client *ClientRep) {
 }
 
 func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
+	if client.Disconnected == true {
+		return
+	}
+
+	client.Disconnected = true
+
 	client_id := client.Mqtt.ClientId
 
-	log.Println("Disconnecting client:", client_id)
+	log.Printf("Disconnecting client(%s), clean-session:%d",
+		client_id, client.Mqtt.ConnectFlags.CleanSession)
 
 	if lock != nil {
 		lock.Lock()
@@ -318,12 +361,23 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 		G_subs_lock.Lock()
 		for topic, _ := range(client.Subscriptions) {
 			delete(G_subs[topic], client_id)
+			if len(G_subs[topic]) == 0 {
+				delete(G_subs, topic)
+				log.Printf("last subscription of topic(%s) is removed, so this topic is removed as well\n", topic)
+			}
 		}
 		showSubscriptions()
 		G_subs_lock.Unlock()
+		log.Printf("Removed all subscriptions for (%s)", client_id)
 
-		// FIXME: add code to deal with clean session, should also remove message
-		// on the fly for this client
+		// remove her flying messages
+		log.Printf("Removing all flying messages for (%s)", client_id)
+		G_redis_client.RemoveAllFlyingMessagesForClient(client_id)
+		log.Printf("Removed all flying messages for (%s)", client_id)
+	} else {
+		// Store subscriptions to redis
+		key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
+		G_redis_client.Store(key, client.Subscriptions)
 	}
 
 
@@ -390,6 +444,29 @@ func PublishMessage(mqtt_msg *MqttMessage) {
 	log.Println("All delivering job dispatched")
 }
 
+func DeliverOnConnection(client_id string) {
+	log.Printf("client(%s) just reconnected, delivering on the fly messages", client_id)
+	messages := G_redis_client.GetFlyingMessagesForClient(client_id)
+	empty := make(map[uint16]FlyingMessage)
+	G_redis_client.SetFlyingMessagesForClient(client_id, &empty)
+	log.Printf("client(%s), all flying messages put in pipeline, removed records in redis", client_id)
+
+	for message_id, msg := range(*messages) {
+		internal_id := msg.MessageInternalId
+		mqtt_msg := GetMqttMessageById(internal_id)
+		log.Printf("re-delivering message(id=%d, internal_id=%d) for %s",
+			message_id, internal_id, client_id)
+		switch msg.Status {
+		case PENDING_PUB:
+			go Deliver(client_id, msg.Qos, mqtt_msg)
+		case PENDING_ACK:
+			go Deliver(client_id, msg.Qos, mqtt_msg)
+		default:
+			log.Panicf("can't re-deliver message at status(%d)", msg.Status)
+		}
+	}
+}
+
 func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 	log.Printf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
 
@@ -436,6 +513,31 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 	// FIXME: add write deatline
 	(*conn).Write(bytes)
 	log.Printf("message sent by Write()")
+
+	if qos == 1 {
+		fly_msg.Status = PENDING_ACK
+		G_redis_client.AddFlyingMessage(dest_client_id, fly_msg)
+		log.Printf("message(msg_id=%d) sent to client(%s), waiting for ACK, added to redis",
+			message_id, dest_client_id)
+	}
+}
+
+// On connection, if clean session is set, call this method
+// to clear all connections. This is the senario when previous
+// CONNECT didn't set clean session bit but current one does
+func RemoveAllSubscriptionsOnConnect(client_id string) {
+	subs := new(map[string]uint8)
+	key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
+	G_redis_client.Fetch(key, subs)
+
+	G_redis_client.Delete(key)
+
+	G_subs_lock.Lock()
+	for topic, _ := range(*subs) {
+		delete(G_subs[topic], client_id)
+	}
+	G_subs_lock.Unlock()
+	
 }
 
 func showSubscriptions() {

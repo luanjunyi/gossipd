@@ -101,7 +101,7 @@ type FlyingMessage struct {
 }
 
 const(
-    PENDING_PUB = uint8(iota)
+    PENDING_PUB = uint8(iota + 1)
 	PENDING_ACK
 )
 

@@ -20,6 +20,7 @@ type ClientRep struct {
 	Shuttingdown chan uint8
 	Subscriptions map[string]uint8
 	Mqtt *Mqtt
+	Disconnected bool
 }
 
 func (cr *ClientRep) UpdateLastTime() {
@@ -35,6 +36,7 @@ func CreateClientRep(client_id string, conn *net.Conn, mqtt *Mqtt) *ClientRep {
 	rep.LastTime = time.Now().Unix()
 	rep.Shuttingdown = make(chan uint8, 1)
 	rep.Subscriptions = make(map[string]uint8)
+	rep.Disconnected = false
 	return rep
 }
 
