@@ -97,6 +97,7 @@ type FlyingMessage struct {
 	MessageInternalId uint64 // The MqttMessage of interest
 	Status uint8  // The status of this message, like PENDING_PUB(deliver occured
 	              // when client if offline), PENDING_ACK, etc
+	ClientMessageId uint16 // The message id to be used in MQTT packet
 }
 
 const(
@@ -105,12 +106,13 @@ const(
 )
 
 func CreateFlyingMessage(dest_id string, message_internal_id uint64,
-	qos uint8, status uint8) *FlyingMessage {
+	qos uint8, status uint8, message_id uint16) *FlyingMessage {
 	msg := new(FlyingMessage)
 	msg.Qos = qos
 	msg.DestClientId = dest_id
 	msg.MessageInternalId = message_internal_id
 	msg.Status = status
+	msg.ClientMessageId = message_id
 	return msg
 }
 

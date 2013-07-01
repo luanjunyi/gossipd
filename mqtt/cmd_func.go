@@ -14,7 +14,6 @@ const (
 )
 
 // Handle CONNECT
-
 func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	//mqtt.Show()
 	client_id := mqtt.ClientId
@@ -53,6 +52,8 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	go CheckTimeout(client_rep)
 	log.Println("Timeout checker go-routine started")
 
+	// FIXME: Add code to recover session
+
 	SendConnack(ACCEPTED, conn, client_rep.WriteLock)
 	log.Printf("New client is all set and CONNACK is sent")
 }
@@ -90,12 +91,6 @@ func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	msg_internal_id := mqtt_msg.InternalId
 	log.Println("Created new MQTT message, internal id:", msg_internal_id)
 	
-	// FIXME: Modify to code below to store the message in Redis
-	// Should be a method of MqttMessage
-	mqtt_msg.Store()
-	tmp := GetMqttMessageById(msg_internal_id)
-	tmp.Show()
-
 	PublishMessage(mqtt_msg)
 
 	// Send PUBACK if QOS is 1
@@ -314,7 +309,6 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 
 	delete(G_clients, client_id)
 
-
 	if client.Mqtt.ConnectFlags.CleanSession {
 		// remove her subscriptions
 		log.Printf("Removing subscriptions for (%s)", client_id)
@@ -402,19 +396,21 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 		qos = dest_qos
 	}
 
-
-
-
 	G_clients_lock.Lock()
 	client_rep, found := G_clients[dest_client_id]
 	G_clients_lock.Unlock()
 	var conn *net.Conn
 	var lock *sync.Mutex
+	message_id := NextOutMessageIdForClient(dest_client_id)
+	fly_msg := CreateFlyingMessage(dest_client_id, msg.InternalId, qos, PENDING_PUB, message_id)
+
 	if found {
 		conn = client_rep.Conn
 		lock = client_rep.WriteLock
 	} else {
-		log.Printf("client(%s) is offline", dest_client_id)
+		G_redis_client.AddFlyingMessage(dest_client_id, fly_msg)
+		log.Printf("client(%s) is offline, added flying message to Redis, message id=%d",
+			dest_client_id, message_id)
 		return
 	}
 
@@ -422,7 +418,7 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 	resp := CreateMqtt(PUBLISH)
 	resp.TopicName = msg.Topic
 	if qos > 0 {
-		resp.MessageId = client_rep.NextOutMessageId()
+		resp.MessageId = message_id
 	}
 	resp.FixedHeader.QosLevel = qos
 	resp.Data = []byte(msg.Payload)

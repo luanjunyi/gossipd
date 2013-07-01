@@ -6,6 +6,7 @@ import (
 	"bytes"
     "encoding/gob"
 	"sync"
+	"fmt"
 )
 
 var g_redis_lock *sync.Mutex = new(sync.Mutex)
@@ -29,8 +30,10 @@ func StartRedisClient() *RedisClient {
 }
 
 func (client *RedisClient) Store(key string, value interface{}) {
+	log.Printf("aqquiring g_redis_lock")
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
+	log.Printf("aqquired g_redis_lock")
 
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -48,8 +51,10 @@ func (client *RedisClient) Store(key string, value interface{}) {
 }
 
 func (client *RedisClient) Fetch(key string, value interface{}) {
+	log.Printf("aqquiring g_redis_lock")
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
+	log.Printf("aqquired g_redis_lock")
 
 	str, err := redis.Bytes((*client.conn).Do("GET", key))
 	if err != nil {
@@ -64,6 +69,22 @@ func (client *RedisClient) Fetch(key string, value interface{}) {
 	if (err != nil) {
 		log.Panic("gob decode failed:", err)
 	}
+}
+
+func (client *RedisClient) AddFlyingMessage(dest_id string,
+	                                        fly_msg *FlyingMessage) {
+	log.Printf("Adding flying message to redis client:(%s), message_id:(%d)",
+		dest_id, fly_msg.ClientMessageId)
+
+	key := fmt.Sprintf("gossipd.client-msg.%s", dest_id)
+	messages := make(map[uint16]FlyingMessage)
+	client.Fetch(key, &messages)
+
+	fmt.Println(key, "fetched from redis")
+	
+	messages[fly_msg.ClientMessageId] = *fly_msg
+	client.Store(key, messages)
+	log.Printf("flying message added to key(%s)", key)
 }
 
 func (client *RedisClient) Expire(key string, sec uint64) {

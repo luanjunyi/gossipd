@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+var NextClientMessageId map[string]uint16 = make(map[string]uint16)
+var g_next_client_id_lock *sync.Mutex = new(sync.Mutex)
+
 type ClientRep struct {
 	ClientId string
 	Conn *net.Conn
@@ -17,8 +20,6 @@ type ClientRep struct {
 	Shuttingdown chan uint8
 	Subscriptions map[string]uint8
 	Mqtt *Mqtt
-	nextOutId uint16
-	lock *sync.Mutex
 }
 
 func (cr *ClientRep) UpdateLastTime() {
@@ -34,15 +35,18 @@ func CreateClientRep(client_id string, conn *net.Conn, mqtt *Mqtt) *ClientRep {
 	rep.LastTime = time.Now().Unix()
 	rep.Shuttingdown = make(chan uint8, 1)
 	rep.Subscriptions = make(map[string]uint8)
-	rep.nextOutId = 0
-	rep.lock = new(sync.Mutex)
 	return rep
 }
 
-func(client *ClientRep) NextOutMessageId() uint16 {
-	client.lock.Lock()
-	client.nextOutId += 1
-	next_id := client.nextOutId
-	client.lock.Unlock()
+func NextOutMessageIdForClient(client_id string) uint16 {
+	g_next_client_id_lock.Lock()
+	defer g_next_client_id_lock.Unlock()
+
+	next_id, found := NextClientMessageId[client_id]
+	if !found {
+		NextClientMessageId[client_id] = 1
+		return 0
+	}
+	NextClientMessageId[client_id] = next_id + 1
 	return next_id
 }

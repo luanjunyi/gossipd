@@ -33,14 +33,12 @@ func handleConnection(conn *net.Conn) {
 		if r := recover(); r != nil {
 			log.Println("got panic:", r, "will close connection from", remoteAddr.Network(), remoteAddr.String())
 			debug.PrintStack()
-		}
-
-		if client != nil {
-			mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
+			if client != nil {
+				mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
+			}
 		}
 		(*conn).Close()
 	}()
-
 
 	var conn_str string = fmt.Sprintf("%s:%s", string(remoteAddr.Network()), remoteAddr.String())
 	log.Println("Got new conection", conn_str)
@@ -71,9 +69,7 @@ func handleConnection(conn *net.Conn) {
 			return
 		}
 		proc(mqtt_parsed, conn, &client)
-
 	}
-
 }
 
 func main() {
