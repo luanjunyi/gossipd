@@ -52,15 +52,14 @@ func HandleConnect(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	go CheckTimeout(client_rep)
 	log.Println("Timeout checker go-routine started")
 
-	// FIXME: Add code to recover session
 	if !client_rep.Mqtt.ConnectFlags.CleanSession {
 		// deliver flying messages
 		DeliverOnConnection(client_id)
 		// restore subscriptions to client_rep
-		subs := new(map[string]uint8)
+		subs := make(map[string]uint8)
 		key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
-		G_redis_client.Fetch(key, subs)
-		client_rep.Subscriptions = *subs
+		G_redis_client.Fetch(key, &subs)
+		client_rep.Subscriptions = subs
 
 	} else {
 		// Remove subscriptions and flying message
@@ -136,12 +135,10 @@ func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 
 	defer func() {
 		G_subs_lock.Unlock()
-		G_topics_lock.Unlock()
 		SendSuback(mqtt.MessageId, mqtt.Topics_qos, conn, client_rep.WriteLock)
 	}()
 
 	G_subs_lock.Lock()
-	G_topics_lock.Lock()
 	for i := 0; i < len(mqtt.Topics); i++ {
 		topic := mqtt.Topics[i]
 		qos := mqtt.Topics_qos[i]
@@ -159,16 +156,17 @@ func HandleSubscribe(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 		subs[client_id] = qos
 		client_rep.Subscriptions[topic] = qos
 
+		if !client_rep.Mqtt.ConnectFlags.CleanSession {
+			// Store subscriptions to redis
+			key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
+			G_redis_client.Store(key, client_rep.Subscriptions)			
+		}
+
 		log.Printf("finding retained message for (%s)", topic)
-		topic_rep, found := G_topics[topic]
-		if found {
-			retained_msg := topic_rep.RetainedMessage
-			if retained_msg != nil {
-				go Deliver(client_id, qos, retained_msg)
-				log.Printf("delivered retained message for (%s)", topic)
-			}
-		} else {
-			log.Printf("no topic info for (%s)", topic)
+		retained_msg := G_redis_client.GetRetainMessage(topic)
+		if retained_msg != nil {
+			go Deliver(client_id, qos, retained_msg)
+			log.Printf("delivered retained message for (%s)", topic)
 		}
 	}
 	log.Println("Subscriptions are all processed, will send SUBACK")
@@ -374,12 +372,7 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 		log.Printf("Removing all flying messages for (%s)", client_id)
 		G_redis_client.RemoveAllFlyingMessagesForClient(client_id)
 		log.Printf("Removed all flying messages for (%s)", client_id)
-	} else {
-		// Store subscriptions to redis
-		key := fmt.Sprintf("gossipd.client-subs.%s", client_id)
-		G_redis_client.Store(key, client.Subscriptions)
 	}
-
 
 	if lock != nil {
 		lock.Unlock()
@@ -415,21 +408,11 @@ func PublishMessage(mqtt_msg *MqttMessage) {
 	payload := mqtt_msg.Payload
 	log.Printf("Publishing job, topic(%s), payload(%s)", topic, payload)
 	// Update global topic record
-	G_topics_lock.Lock()
-	topic_rep, existed := G_topics[topic]
-	if !existed {
-		topic_rep = CreateTopic(topic)
-		G_topics[topic] = topic_rep
-	}
+
 	if mqtt_msg.Retain {
-		if payload == "" {
-			topic_rep.RetainedMessage = nil
-		} else {
-			topic_rep.RetainedMessage = mqtt_msg
-		}
+		G_redis_client.SetRetainMessage(topic, mqtt_msg)
 		log.Printf("Set the message(%s) as the current retain content of topic:%s\n", payload, topic)
 	}
-	G_topics_lock.Unlock()
 
 	// Dispatch delivering jobs
 	G_subs_lock.Lock()

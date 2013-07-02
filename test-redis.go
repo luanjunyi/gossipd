@@ -25,8 +25,17 @@ func main() {
 
 	defer c.Close()
 
-	s, _ := redis.String(c.Do("Get", "target"))
-	fmt.Println(s)
+	v, err := redis.Int64(c.Do("GET", "target"))
+	fmt.Println("val", v, err)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	ret, _ := redis.Values(c.Do("KEYS", "*"))
+	for _, key := range(ret) {
+		sk := string(key.([]byte))
+		fmt.Println(sk)
+	}
 
 	p := P{50, 210, 46, "AdaBoost"}
 	var buf bytes.Buffer

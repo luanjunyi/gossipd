@@ -50,7 +50,7 @@ func (client *RedisClient) Store(key string, value interface{}) {
 		key, ret)
 }
 
-func (client *RedisClient) Fetch(key string, value interface{}) {
+func (client *RedisClient) Fetch(key string, value interface{}) int {
 	log.Printf("aqquiring g_redis_lock")
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
@@ -60,7 +60,7 @@ func (client *RedisClient) Fetch(key string, value interface{}) {
 	if err != nil {
 		log.Printf("redis failed to fetch key(%s): %s",
 			key, err)
-		return
+		return 1
 	}
 	buf := bytes.NewBuffer(str)
 	dec := gob.NewDecoder(buf)
@@ -69,12 +69,49 @@ func (client *RedisClient) Fetch(key string, value interface{}) {
 	if (err != nil) {
 		log.Panic("gob decode failed:", err)
 	}
+	return 0
+}
+
+func (client *RedisClient) GetSubsClients() []string {
+	g_redis_lock.Lock()
+	defer g_redis_lock.Unlock()
+	keys, _ := redis.Values((*client.Conn).Do("KEYS", "gossipd.client-subs.*"))
+	clients := make([]string, 0)
+	for _, key := range(keys) {
+		clients = append(clients, string(key.([]byte)))
+	}
+	return clients
 }
 
 func (client *RedisClient) Delete(key string) {
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
 	(*client.Conn).Do("DEL", key)
+}
+
+func (client *RedisClient) GetRetainMessage(topic string) *MqttMessage {
+	msg := new(MqttMessage)
+	key := fmt.Sprintf("gossipd.topic-retained.%s", topic)
+	var internal_id uint64
+	ret := client.Fetch(key, &internal_id)
+	if ret != 0 {
+		fmt.Printf("retained message internal id not found in redis for topic(%s)", topic)
+		return nil
+	}
+
+	key = fmt.Sprintf("gossipd.mqtt-msg.%d", internal_id)
+	ret = client.Fetch(key, &msg)
+	if ret != 0 {
+		fmt.Printf("retained message, though internal id found, not found in redis for topic(%s)", topic)
+		return nil
+	}
+	return msg
+}
+
+func (client *RedisClient) SetRetainMessage(topic string, msg *MqttMessage) {
+	key := fmt.Sprintf("gossipd.topic-retained.%s", topic)
+	internal_id := msg.InternalId
+	client.Store(key, internal_id)
 }
 
 func (client *RedisClient) GetFlyingMessagesForClient(client_id string) *map[uint16]FlyingMessage {

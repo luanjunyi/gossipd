@@ -31,7 +31,7 @@ func handleConnection(conn *net.Conn) {
 	defer func() {
 		log.Println("executing defered func in handleConnection")
 		if r := recover(); r != nil {
-			log.Println("got panic:", r, "will close connection from", remoteAddr.Network(), remoteAddr.String())
+			log.Printf("got panic:(%s) will close connection from %s:%s", r, remoteAddr.Network(), remoteAddr.String())
 			debug.PrintStack()
 
 		}
@@ -76,6 +76,9 @@ func handleConnection(conn *net.Conn) {
 func main() {
 	flag.Parse()
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	mqtt.RecoverFromRedis()
+
 	log.Printf("Gossipd kicking off, listening localhost:%d", *g_port)
 
 	link, _ := net.Listen("tcp", fmt.Sprintf(":%d", *g_port))
