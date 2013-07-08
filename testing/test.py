@@ -15,6 +15,7 @@ _logger = logging.getLogger('root')
 g_publish_finish_time = None
 g_subscribe_finish_time = None
 g_subscribe_done = set()
+g_active_client_num = 0
 
 class TestWorker(object):
     def __init__(self, worker_id, thread_num, hostname, port):
@@ -30,6 +31,7 @@ class TestWorker(object):
         self.client.on_subscribe = self.on_subscribe
         self.client.on_message = self.on_message
         self.client.on_unsubscribe = self.on_unsubscribe
+        self.subscribe_done = False
 
     def on_connect(self, mosq, obj, rc):
         if rc == 0:
@@ -38,9 +40,14 @@ class TestWorker(object):
             _logger.error('worker %d on_connect, rc=%d' % (self.worker_id, rc))
 
     def on_disconnect(self, mosq, obj, rc):
+        global g_active_client_num
         if rc == 0:
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
+            if not self.subscribe_done:
+                _logger.error('worker %d not done subscription and lost connection, will decrement active client number')
+                g_active_client_num -= 1
+
             _logger.error('worker %d lost connection to server' % self.worker_id)
 
     def on_publish(self, mosq, obj, mid):
@@ -49,6 +56,7 @@ class TestWorker(object):
 
     def on_subscribe(self, mosq, obj, mid, qos_list):
         g_subscribe_done.add(self.worker_id)
+        self.subscribe_done = True
         #_logger.debug('on worker %d, subscribed mid=%d' % (self.worker_id, mid))
 
     def on_unsubscribe(self, mosq, obj, mid):
@@ -69,6 +77,7 @@ class TestWorker(object):
         self.client.connect(self.hostname, self.port)
 
         topic = str(self.worker_id)
+        self.subscribe_done = False
         self.client.subscribe(topic, qos=1)
 
         count = 0
@@ -139,16 +148,22 @@ def create_publisher(message_num, thread_num, hostname, port):
 
 
 def start_testing(hostname, port, thread_num, sleep):
+    global g_active_client_num
+    g_active_client_num = thread_num
+
     _logger.info("Testing, %s:%d, thread:%d, sleep:%d" % (hostname, port, thread_num, sleep))
     message_num = 10
     workers = list()
+
     for i in xrange(thread_num):
         worker = eventlet.spawn(create_subscriber, i+1, thread_num, message_num, hostname, port)
         workers.append(worker)
         time.sleep(0.01)
 
-    while len(g_subscribe_done) < thread_num:
-        _logger.info("waiting %d clients to finish subscribe" % (thread_num - len(g_subscribe_done)))
+    while len(g_subscribe_done) < g_active_client_num:
+        _logger.info("waiting %d/%d clients to finish subscribe" %
+                     (thread_num - len(g_subscribe_done),
+                      g_active_client_num))
         time.sleep(1)
 
     create_publisher(message_num, thread_num, hostname, port)

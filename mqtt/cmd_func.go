@@ -524,6 +524,8 @@ func RemoveAllSubscriptionsOnConnect(client_id string) {
 }
 
 func showSubscriptions() {
+	// Disable for now
+	return
 	fmt.Printf("Global Subscriptions: %d topics\n", len(G_subs))
 	for topic, subs := range(G_subs) {
 		fmt.Printf("\t%s: %d subscriptions\n", topic, len(subs))
