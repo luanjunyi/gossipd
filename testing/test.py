@@ -12,6 +12,10 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(module)s(%(lineno)d)
                     level = logging.DEBUG, stream = sys.stderr)
 _logger = logging.getLogger('root')
 
+g_publish_finish_time = None
+g_subscribe_finish_time = None
+g_subscribe_done = set()
+
 class TestWorker(object):
     def __init__(self, worker_id, thread_num, hostname, port):
         self.client_id = "test_client_%d" % worker_id
@@ -40,19 +44,23 @@ class TestWorker(object):
             _logger.error('worker %d lost connection to server' % self.worker_id)
 
     def on_publish(self, mosq, obj, mid):
+        return
         _logger.debug('on worker %d, published mid=%d' % (self.worker_id, mid))
 
     def on_subscribe(self, mosq, obj, mid, qos_list):
-        _logger.debug('on worker %d, subscribed mid=%d' % (self.worker_id, mid))
+        g_subscribe_done.add(self.worker_id)
+        #_logger.debug('on worker %d, subscribed mid=%d' % (self.worker_id, mid))
 
     def on_unsubscribe(self, mosq, obj, mid):
+        return
         _logger.debug('on woker %d, unsubscribed mid=%d' % (self.worker_id, mid))
 
     def on_message(self, mosq, obj, msg):
-        now = int(time.time())
-        sent = int(msg.payload)
+        now = time.time()
+        sent = float(msg.payload)
         elapsed = now - sent
         self.status.append(elapsed)
+        return
         _logger.debug('worker %d got message, topic=(%s), payload=(%s)' % 
                       (self.worker_id, msg.topic, msg.payload))
 
@@ -61,14 +69,26 @@ class TestWorker(object):
         self.client.connect(self.hostname, self.port)
 
         topic = str(self.worker_id)
-        self.client.subscribe(topic)
+        self.client.subscribe(topic, qos=1)
 
+        count = 0
         while len(self.status) < message_num:
-            _logger.debug("worker %d get %d messages" % (self.worker_id, len(self.status)))
+            count += 1
+            if count % 100 == 0:
+                _logger.debug("worker %d get %d messages" % (self.worker_id, len(self.status)))
             ret = self.client.loop()
             if ret != 0:
                 _logger.error("worker %d loop() failed, returned %d" % (self.worker_id, ret))
+                #sys.exit(0)
                 break
+            now = time.time()
+            if g_publish_finish_time is not None:
+                late = (now - g_publish_finish_time)
+                if late > 10.0:
+                    _logger.debug("worker %d: too long waiting for message, quit with %d received" % (self.worker_id, len(self.status)))
+                    break
+                else:
+                    _logger.debug("worker %d, %.3f seconds late" % (self.worker_id, late))
 
         self.client.disconnect()
         
@@ -86,11 +106,13 @@ def create_subscriber(worker_id, thread_num, message_num, hostname, port):
     return worker.collect()
 
 def create_publisher(message_num, thread_num, hostname, port):
+    global g_publish_finish_time
+
     published = list()
 
     def _on_publish(mosq, obj, mid):
         published.append(mid)
-        _logger.debug('published %d' % mid)
+        #_logger.debug('got publish ack %d' % mid)
 
     client = GossipClient()
     client.on_publish = _on_publish
@@ -98,17 +120,22 @@ def create_publisher(message_num, thread_num, hostname, port):
 
     for i in xrange(message_num):
         for j in xrange(thread_num):
-            now = int(time.time())
-            client.publish(topic=str(j+1), payload=str(now))
-            _logger.debug("published topic(%s) %d" % (str(j+1), now))
+            now = time.time()
+            client.publish(topic=str(j+1), payload=str(now), qos=1)
+            count = i *  thread_num + j
+            if count % 100 == 0:
+                _logger.debug("published %d messages" % count)
             time.sleep(0.01) # Mosquitto won't work without this sleep
 
     while len(published) < message_num * thread_num:
         _logger.debug("published %d" % len(published))
-        client.loop()
+        ret = client.loop()
+        if ret != 0:
+            _logger.fatal("publisher's connection is lost, rc=%d" % rc)
+            sys.exit(0)
 
+    g_publish_finish_time = time.time()
     _logger.info("all messages published")
-
 
 
 def start_testing(hostname, port, thread_num, sleep):
@@ -118,9 +145,11 @@ def start_testing(hostname, port, thread_num, sleep):
     for i in xrange(thread_num):
         worker = eventlet.spawn(create_subscriber, i+1, thread_num, message_num, hostname, port)
         workers.append(worker)
+        time.sleep(0.01)
 
-    _logger.info("waiting 10 seconds for all to get subscribtion to finish")
-    time.sleep(4)
+    while len(g_subscribe_done) < thread_num:
+        _logger.info("waiting %d clients to finish subscribe" % (thread_num - len(g_subscribe_done)))
+        time.sleep(1)
 
     create_publisher(message_num, thread_num, hostname, port)
     
@@ -156,7 +185,7 @@ def main():
 
     with open(outfile, "w") as out:
         for line in data:
-            cur_line = " ".join([str(i) for i in line])
+            cur_line = " ".join(["%.4f" % i for i in line])
             out.write(cur_line + "\n")
     
 
