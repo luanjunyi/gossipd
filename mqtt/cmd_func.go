@@ -97,8 +97,8 @@ func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	retain := mqtt.FixedHeader.Retain
 	message_id := mqtt.MessageId
 	timestamp := time.Now().Unix()
-	log.Printf("Handling PUBLISH, client_id: %s, topic:(%s), payload:(%s), qos=%d, retain=%d\n",
-		client_id, topic, payload, qos, retain)
+	log.Printf("Handling PUBLISH, client_id: %s, topic:(%s), payload:(%s), qos=%d, retain=%t, message_id=%d\n",
+		client_id, topic, payload, qos, retain, message_id)
 
 	// Create new MQTT message
 	mqtt_msg := CreateMqttMessage(topic, payload, client_id, qos, message_id, timestamp, retain)
@@ -110,6 +110,7 @@ func HandlePublish(mqtt *Mqtt, conn *net.Conn, client **ClientRep) {
 	// Send PUBACK if QOS is 1
 	if qos == 1 {
 		SendPuback(message_id, conn, client_rep.WriteLock)
+		log.Printf("PUBACK sent to client(%s)", client_id)
 	}
 }
 
@@ -118,6 +119,7 @@ func SendPuback(msg_id uint16, conn *net.Conn, lock *sync.Mutex) {
 	resp.MessageId = msg_id
 	bytes, _ := Encode(resp)
 	MqttSendToClient(bytes, conn, lock)
+
 }
 
 /* Handle SUBSCRIBE */
@@ -319,7 +321,7 @@ func CheckTimeout(client *ClientRep) {
 
 			if deadline < now {
 				ForceDisconnect(client, G_clients_lock, SEND_WILL)
-				log.Printf("clinet(%s) is timeout, kicked out",
+				log.Printf("client(%s) is timeout, kicked out",
 					client_id)
 			} else {
 				log.Printf("client(%s) will be kicked out in %d seconds\n",

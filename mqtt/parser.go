@@ -1,6 +1,7 @@
 package mqtt
 
-import ("bytes"
+import (
+	"bytes"
 	"errors"
 	"log")
 
@@ -11,7 +12,7 @@ func getUint8(b []byte, p *int)uint8{
 
 func getUint16(b []byte, p *int)uint16{
     *p += 2
-    return uint16(b[*p-2] << 8) + uint16(b[*p-1])
+    return uint16(b[*p-2]) << 8 + uint16(b[*p-1])
 }
 
 func getString(b []byte, p *int)string{

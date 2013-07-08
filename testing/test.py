@@ -2,11 +2,14 @@ import sys, os, time
 import argparse
 import logging
 import eventlet
+
+eventlet.monkey_patch()
+
 from datetime import datetime
 from gossip_client import GossipClient
 from pprint import pprint
 
-eventlet.monkey_patch()
+
 
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(module)s(%(lineno)d): %(message)s",
                     level = logging.DEBUG, stream = sys.stderr)
@@ -122,16 +125,16 @@ def create_publisher(message_num, thread_num, hostname, port):
 
     def _on_publish(mosq, obj, mid):
         published.append(mid)
-        #_logger.debug('got publish ack %d' % mid)
+        _logger.debug('got publish ack %d' % mid)
 
-    def on_disconnect(mosq, obj, rc):
+    def _on_disconnect(mosq, obj, rc):
         if rc != 0:
             _logger.fatal('publisher lost connection to server')
             sys.exit(0)
 
-    client = GossipClient()
+    client = GossipClient(client_id="gossipd-test-publisher")
     client.on_publish = _on_publish
-    client.on_disconnect = on_disconnect
+    client.on_disconnect = _on_disconnect
     client.connect(hostname, port)
 
     for i in xrange(message_num):
@@ -141,7 +144,10 @@ def create_publisher(message_num, thread_num, hostname, port):
             count = i *  thread_num + j
             if count % 100 == 0:
                 _logger.debug("published %d messages" % count)
-            client.loop(0.5) # Mosquitto won't work without this sleep
+            ret = client.loop(10.0) # Mosquitto won't work without this sleep
+            if ret != 0:
+                _logger.fatal("publish loop returned %d" % ret)
+                sys.exit(0)
 
     while len(published) < message_num * thread_num:
         _logger.debug("published %d" % len(published))
