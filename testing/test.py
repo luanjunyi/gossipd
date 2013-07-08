@@ -45,7 +45,8 @@ class TestWorker(object):
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
             if not self.subscribe_done:
-                _logger.error('worker %d not done subscription and lost connection, will decrement active client number')
+                _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
+                              self.worker_id)
                 g_active_client_num -= 1
 
             _logger.error('worker %d lost connection to server' % self.worker_id)
@@ -123,8 +124,14 @@ def create_publisher(message_num, thread_num, hostname, port):
         published.append(mid)
         #_logger.debug('got publish ack %d' % mid)
 
+    def on_disconnect(mosq, obj, rc):
+        if rc != 0:
+            _logger.fatal('publisher lost connection to server')
+            sys.exit(0)
+
     client = GossipClient()
     client.on_publish = _on_publish
+    client.on_disconnect = on_disconnect
     client.connect(hostname, port)
 
     for i in xrange(message_num):
@@ -134,7 +141,7 @@ def create_publisher(message_num, thread_num, hostname, port):
             count = i *  thread_num + j
             if count % 100 == 0:
                 _logger.debug("published %d messages" % count)
-            time.sleep(0.01) # Mosquitto won't work without this sleep
+            client.loop(0.5) # Mosquitto won't work without this sleep
 
     while len(published) < message_num * thread_num:
         _logger.debug("published %d" % len(published))
@@ -162,7 +169,7 @@ def start_testing(hostname, port, thread_num, sleep):
 
     while len(g_subscribe_done) < g_active_client_num:
         _logger.info("waiting %d/%d clients to finish subscribe" %
-                     (thread_num - len(g_subscribe_done),
+                     (g_active_client_num - len(g_subscribe_done),
                       g_active_client_num))
         time.sleep(1)
 
