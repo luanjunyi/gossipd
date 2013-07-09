@@ -1,3 +1,5 @@
+// FIXME: handle disconnection from redis
+
 package mqtt
 
 import (
@@ -7,6 +9,7 @@ import (
     "encoding/gob"
 	"sync"
 	"fmt"
+	"time"
 )
 
 var g_redis_lock *sync.Mutex = new(sync.Mutex)
@@ -14,6 +17,7 @@ var g_redis_lock *sync.Mutex = new(sync.Mutex)
 type RedisClient struct {
 	Conn *redis.Conn
 }
+
 
 func StartRedisClient() *RedisClient {
 	conn, err := redis.Dial("tcp", ":6379")
@@ -26,8 +30,19 @@ func StartRedisClient() *RedisClient {
 
 	client := new(RedisClient)
 	client.Conn = &conn
+
+	go ping_pong_redis(client, 240)
 	return client
 }
+
+func ping_pong_redis(client *RedisClient, interval int) {
+	c := time.Tick(time.Duration(interval) * time.Second)
+	for _ = range c {
+		(*client.Conn).Do("PING")
+		log.Printf("sent PING to redis")
+	}
+}
+
 
 func (client *RedisClient) Store(key string, value interface{}) {
 	log.Printf("aqquiring g_redis_lock")
@@ -44,7 +59,7 @@ func (client *RedisClient) Store(key string, value interface{}) {
 
 	ret, err := (*client.Conn).Do("SET", key, buf.Bytes())
 	if err != nil {
-		log.Panic("redis failed to set key(%s): %s", key, err)
+		log.Panicf("redis failed to set key(%s): %s", key, err)
 	}
 	log.Printf("stored to redis, key=%s, val(some bytes), returned=%s",
 		key, ret)
