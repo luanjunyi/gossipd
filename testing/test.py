@@ -1,7 +1,9 @@
 import sys, os, time
 import argparse
+import itertools
 import logging
 import eventlet
+import numpy as np
 
 eventlet.monkey_patch()
 
@@ -211,10 +213,21 @@ def main():
 
     data = start_testing(hostname, port, thread_num, sleep)
 
+
+    
     with open(outfile, "w") as out:
         for line in data:
             cur_line = " ".join(["%.4f" % i for i in line])
             out.write(cur_line + "\n")
+        
+    data = itertools.chain(*data)
+    data = [i for i in data]
+    mean = np.mean(data) * 1000
+    max = np.max(data) * 1000
+    min = np.min(data) * 1000
+    std = np.std(data) * 1000
+
+    print "%.2f %.2f %.2f %.2f" % (mean, std, max, min)
 
     _logger.info("testing finsished")
 
