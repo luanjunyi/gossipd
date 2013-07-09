@@ -11,7 +11,7 @@ from pprint import pprint
 
 
 
-logging.basicConfig(format="%(asctime)s - %(levelname)s - %(module)s(%(lineno)d): %(message)s",
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(module)s-%(funcName)s(%(lineno)d): %(message)s",
                     level = logging.DEBUG, stream = sys.stderr)
 _logger = logging.getLogger('root')
 
@@ -78,7 +78,7 @@ class TestWorker(object):
 
     def start_listening(self, message_num):
         self.status = self._build_status()
-        self.client.connect(self.hostname, self.port)
+        self.client.connect(self.hostname, self.port, keepalive=6000)
 
         topic = str(self.worker_id)
         self.subscribe_done = False
@@ -215,7 +215,8 @@ def main():
         for line in data:
             cur_line = " ".join(["%.4f" % i for i in line])
             out.write(cur_line + "\n")
-    
+
+    _logger.info("testing finsished")
 
 if __name__ == "__main__":
     main()
