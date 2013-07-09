@@ -125,7 +125,7 @@ def create_publisher(message_num, thread_num, hostname, port):
 
     def _on_publish(mosq, obj, mid):
         published.append(mid)
-        _logger.debug('got publish ack %d' % mid)
+        #_logger.debug('got publish ack %d' % mid)
 
     def _on_disconnect(mosq, obj, rc):
         if rc != 0:
