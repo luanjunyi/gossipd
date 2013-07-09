@@ -18,6 +18,7 @@ type RedisClient struct {
 	Conn *redis.Conn
 }
 
+
 func StartRedisClient() *RedisClient {
 	conn, err := redis.Dial("tcp", ":6379")
 
@@ -30,17 +31,18 @@ func StartRedisClient() *RedisClient {
 	client := new(RedisClient)
 	client.Conn = &conn
 
-	go ping_pong_reids(client, 240)
+	go ping_pong_redis(client, 240)
 	return client
 }
 
 func ping_pong_redis(client *RedisClient, interval int) {
-	c := time.Tick(interval * time.Second)
-	for _ := range c {
-		client.conn.Do("PING")
+	c := time.Tick(time.Duration(interval) * time.Second)
+	for _ = range c {
+		(*client.Conn).Do("PING")
 		log.Printf("sent PING to redis")
 	}
 }
+
 
 func (client *RedisClient) Store(key string, value interface{}) {
 	log.Printf("aqquiring g_redis_lock")
