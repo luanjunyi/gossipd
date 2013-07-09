@@ -47,12 +47,12 @@ class TestWorker(object):
         if rc == 0:
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
-            if not self.subscribe_done:
-                _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
-                              self.worker_id)
-                g_active_client_num -= 1
-
             _logger.error('worker %d lost connection to server' % self.worker_id)
+
+        if not self.subscribe_done:
+            _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
+                          self.worker_id)
+            g_active_client_num -= 1
 
     def on_publish(self, mosq, obj, mid):
         return
