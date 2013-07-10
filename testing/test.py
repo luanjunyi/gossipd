@@ -28,7 +28,7 @@ g_active_client_num = 0
 
 class TestWorker(object):
     def __init__(self, worker_id, thread_num, hostname, port):
-        self.client_id = "%s_test_%d_%f" % (socket.gethostname(), worker_id, time.time())
+        self.client_id = "%s@%s_test_%d_%f" % (socket.gethostname(), os.getusername(), worker_id, time.time())
         self.worker_id = worker_id
         self.thread_num = thread_num
         self.hostname = hostname
@@ -139,7 +139,7 @@ def create_publisher(message_num, thread_num, hostname, port):
             sys.exit(0)
 
 
-    pub_id = "gossip-test-publisher-%s-%s" % (socket.gethostname(), time.time())
+    pub_id = "gossip-test-publisher-%s@%s-%s" % (os.getusername(), socket.gethostname(), time.time())
     _logger.debug("publisher id is (%s)" % pub_id)
     client = GossipClient(client_id=pub_id)
     
