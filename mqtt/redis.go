@@ -73,7 +73,7 @@ func (client *RedisClient) Fetch(key string, value interface{}) int {
 
 	str, err := redis.Bytes((*client.Conn).Do("GET", key))
 	if err != nil {
-		log.Printf("redis failed to fetch key(%s): %s",
+		log.Printf("redis failed to fetch key(%s): %s\n",
 			key, err)
 		return 1
 	}
@@ -157,6 +157,14 @@ func (client *RedisClient) AddFlyingMessage(dest_id string,
 	client.SetFlyingMessagesForClient(dest_id, &messages)
 	log.Printf("Added flying message to redis client:(%s), message_id:(%d)",
 		dest_id, fly_msg.ClientMessageId)
+}
+
+func (client *RedisClient) IsFlyingMessagePendingAck(client_id string, message_id uint16) bool {
+	messages := G_redis_client.GetFlyingMessagesForClient(client_id)
+
+	flying_msg, found := (*messages)[message_id]
+
+	return found && flying_msg.Status == PENDING_ACK
 }
 
 func (client *RedisClient) Expire(key string, sec uint64) {

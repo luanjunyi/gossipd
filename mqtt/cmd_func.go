@@ -345,7 +345,7 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 
 	client_id := client.Mqtt.ClientId
 
-	log.Printf("Disconnecting client(%s), clean-session:%d",
+	log.Printf("Disconnecting client(%s), clean-session:%t",
 		client_id, client.Mqtt.ConnectFlags.CleanSession)
 
 	if lock != nil {
@@ -452,15 +452,8 @@ func DeliverOnConnection(client_id string) {
 	}
 }
 
-func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
-	log.Printf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
-
-	// Get effective qos: the smaller of the publisher and the subscriber
-	qos := msg.Qos
-	if dest_qos < msg.Qos {
-		qos = dest_qos
-	}
-
+// Real heavy lifting jobs for delivering message
+func DeliverMessage(dest_client_id string, qos uint8, msg *MqttMessage) {
 	G_clients_lock.Lock()
 	client_rep, found := G_clients[dest_client_id]
 	G_clients_lock.Unlock()
@@ -504,6 +497,42 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 		G_redis_client.AddFlyingMessage(dest_client_id, fly_msg)
 		log.Printf("message(msg_id=%d) sent to client(%s), waiting for ACK, added to redis",
 			message_id, dest_client_id)
+	}
+}
+
+func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
+	log.Printf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
+
+	// Get effective qos: the smaller of the publisher and the subscriber
+	qos := msg.Qos
+	if dest_qos < msg.Qos {
+		qos = dest_qos
+	}
+
+	DeliverMessage(dest_client_id, qos, msg)
+
+	if qos > 0 {
+		// Start retry
+		go RetryDeliver(20, dest_client_id, qos, msg)
+	}
+}
+
+func RetryDeliver(sleep uint64, dest_client_id string, qos uint8, msg *MqttMessage) {
+	if sleep > 3600 * 4 {
+		log.Printf("too long retry delay(%s), abort retry deliver", sleep)
+		return
+	}
+
+	time.Sleep(time.Duration(sleep) * time.Second)
+
+	if G_redis_client.IsFlyingMessagePendingAck(dest_client_id, msg.MessageId) {
+		DeliverMessage(dest_client_id, qos, msg)
+		log.Printf("Retried delivering message %s:%d, will sleep %d seconds before next attampt",
+			dest_client_id, msg.MessageId, sleep * 2)
+		RetryDeliver(sleep * 2, dest_client_id, qos, msg)
+	} else {
+		log.Printf("message (%s:%d) is not pending ACK, stop retry delivering",
+			dest_client_id, msg.MessageId)
 	}
 }
 
