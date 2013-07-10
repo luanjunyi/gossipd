@@ -138,7 +138,7 @@ def create_publisher(message_num, thread_num, hostname, port):
             _logger.fatal('publisher lost connection to server')
             sys.exit(0)
 
-    client = GossipClient(client_id="gossipd-test-publisher")
+    client = GossipClient(client_id="gossip-test-publisher-%s-%s" % (socket.gethostname(), time.time()))
     client.on_publish = _on_publish
     client.on_disconnect = _on_disconnect
     client.connect(hostname, port)
