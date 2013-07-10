@@ -220,10 +220,10 @@ def main():
 
 
     
-    with open(outfile, "w") as out:
-        for line in data:
-            cur_line = " ".join(["%.4f" % i for i in line])
-            out.write(cur_line + "\n")
+    # with open(outfile, "w") as out:
+    #     for line in data:
+    #         cur_line = " ".join(["%.4f" % i for i in line])
+    #         out.write(cur_line + "\n")
         
     data = itertools.chain(*data)
     data = [i for i in data]
