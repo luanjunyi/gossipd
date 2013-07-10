@@ -1,7 +1,9 @@
 import sys, os, time
 import argparse
+import itertools
 import logging
 import eventlet
+import numpy as np
 
 eventlet.monkey_patch()
 
@@ -47,12 +49,12 @@ class TestWorker(object):
         if rc == 0:
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
-            if not self.subscribe_done:
-                _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
-                              self.worker_id)
-                g_active_client_num -= 1
-
             _logger.error('worker %d lost connection to server' % self.worker_id)
+
+        if not self.subscribe_done:
+            _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
+                          self.worker_id)
+            g_active_client_num -= 1
 
     def on_publish(self, mosq, obj, mid):
         return
@@ -211,10 +213,21 @@ def main():
 
     data = start_testing(hostname, port, thread_num, sleep)
 
+
+    
     with open(outfile, "w") as out:
         for line in data:
             cur_line = " ".join(["%.4f" % i for i in line])
             out.write(cur_line + "\n")
+        
+    data = itertools.chain(*data)
+    data = [i for i in data]
+    mean = np.mean(data) * 1000
+    max = np.max(data) * 1000
+    min = np.min(data) * 1000
+    std = np.std(data) * 1000
+
+    print "%.2f %.2f %.2f %.2f" % (mean, std, max, min)
 
     _logger.info("testing finsished")
 
