@@ -6,9 +6,8 @@ import argparse
 import itertools
 import logging
 import eventlet
+import socket
 import numpy as np
-
-
 
 eventlet.monkey_patch()
 
@@ -29,7 +28,7 @@ g_active_client_num = 0
 
 class TestWorker(object):
     def __init__(self, worker_id, thread_num, hostname, port):
-        self.client_id = "test_client_%d" % worker_id
+        self.client_id = "%s_test_%d_%f" % (socket.gethostname(), worker_id, time.time())
         self.worker_id = worker_id
         self.thread_num = thread_num
         self.hostname = hostname
