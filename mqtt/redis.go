@@ -93,9 +93,15 @@ func (client *RedisClient) Fetch(key string, value interface{}) int {
 
 	str, err := redis.Bytes((*client.Conn).Do("GET", key))
 	if err != nil {
-		log.Printf("redis failed to fetch key(%s): %s\n",
-			key, err)
-		return 1
+		if err.Error() == "use of closed network connection" {
+			g_redis_lock.Unlock()
+			client.Reconnect()
+			return client.Fetch(key, value)
+		} else {
+			log.Printf("redis failed to fetch key(%s): %s\n",
+				key, err)
+			return 1
+		}
 	}
 	buf := bytes.NewBuffer(str)
 	dec := gob.NewDecoder(buf)
