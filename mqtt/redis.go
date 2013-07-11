@@ -45,8 +45,6 @@ func ping_pong_redis(client *RedisClient, interval int) {
 
 func (client* RedisClient) Reconnect() {
 	log.Printf("aqquiring g_redis_lock")
-	g_redis_lock.Lock()
-	defer g_redis_lock.Unlock()
 
 	conn, err := redis.Dial("tcp", ":6379")
 	if err != nil {
@@ -73,7 +71,6 @@ func (client *RedisClient) Store(key string, value interface{}) {
 	ret, err := (*client.Conn).Do("SET", key, buf.Bytes())
 	if err != nil {
 		if err.Error() == "use of closed network connection" {
-			g_redis_lock.Unlock()
 			client.Reconnect()
 			client.Store(key, value)
 			return
@@ -94,7 +91,6 @@ func (client *RedisClient) Fetch(key string, value interface{}) int {
 	str, err := redis.Bytes((*client.Conn).Do("GET", key))
 	if err != nil {
 		if err.Error() == "use of closed network connection" {
-			g_redis_lock.Unlock()
 			client.Reconnect()
 			return client.Fetch(key, value)
 		} else {
