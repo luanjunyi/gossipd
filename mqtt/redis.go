@@ -61,6 +61,10 @@ func (client *RedisClient) Store(key string, value interface{}) {
 	defer g_redis_lock.Unlock()
 	log.Printf("aqquired g_redis_lock")
 
+	client.StoreNoLock(key, value)
+}
+
+func (client *RedisClient) StoreNoLock(key string, value interface{}) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(value)
@@ -72,7 +76,7 @@ func (client *RedisClient) Store(key string, value interface{}) {
 	if err != nil {
 		if err.Error() == "use of closed network connection" {
 			client.Reconnect()
-			client.Store(key, value)
+			client.StoreNoLock(key, value)
 			return
 		} else {
 			log.Panicf("redis failed to set key(%s): %s", key, err)
@@ -88,11 +92,15 @@ func (client *RedisClient) Fetch(key string, value interface{}) int {
 	defer g_redis_lock.Unlock()
 	log.Printf("aqquired g_redis_lock")
 
+	return client.FetchNoLock(key, value)
+}
+
+func (client *RedisClient) FetchNoLock(key string, value interface{}) int {
 	str, err := redis.Bytes((*client.Conn).Do("GET", key))
 	if err != nil {
 		if err.Error() == "use of closed network connection" {
 			client.Reconnect()
-			return client.Fetch(key, value)
+			return client.FetchNoLock(key, value)
 		} else {
 			log.Printf("redis failed to fetch key(%s): %s\n",
 				key, err)
