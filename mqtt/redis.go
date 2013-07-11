@@ -68,7 +68,7 @@ func (client *RedisClient) Store(key string, value interface{}) {
 
 	ret, err := (*client.Conn).Do("SET", key, buf.Bytes())
 	if err != nil {
-		if err == use of closed network connection {
+		if err == "use of closed network connection" {
 			client.Reconnect()
 			return client.Store(key, value)
 		} else {
