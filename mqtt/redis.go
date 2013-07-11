@@ -52,7 +52,7 @@ func (client* RedisClient) Reconnect() {
 	if err != nil {
 		log.Panicf("Failed to connect to Redis at port 6379")
 	} else {
-		log.Println("Redis client started")
+		log.Println("Redis client reconncted")
 	}
 	client.Conn = &conn
 }
