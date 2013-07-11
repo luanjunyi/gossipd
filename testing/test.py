@@ -140,7 +140,7 @@ def create_publisher(message_num, thread_num, hostname, port):
             sys.exit(0)
 
 
-    pub_id = "gossip-test-publisher-%s" % (socket.gethostname())
+    pub_id = "publisher-%s" % (socket.gethostname())
     _logger.debug("publisher id is (%s)" % pub_id)
     client = GossipClient(client_id=pub_id)
     
