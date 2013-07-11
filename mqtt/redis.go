@@ -43,6 +43,15 @@ func ping_pong_redis(client *RedisClient, interval int) {
 	}
 }
 
+func Reconnect(client *RedisClient) {
+	conn, err := redis.Dial("tcp", ":6379")
+	if err != nil {
+		log.Panicf("Failed to connect to Redis at port 6379")
+	} else {
+		log.Println("Redis client started")
+	}
+	client.Conn = &conn
+}
 
 func (client *RedisClient) Store(key string, value interface{}) {
 	log.Printf("aqquiring g_redis_lock")
@@ -59,7 +68,12 @@ func (client *RedisClient) Store(key string, value interface{}) {
 
 	ret, err := (*client.Conn).Do("SET", key, buf.Bytes())
 	if err != nil {
-		log.Panicf("redis failed to set key(%s): %s", key, err)
+		if err == use of closed network connection {
+			client.Reconnect()
+			return client.Store(key, value)
+		} else {
+			log.Panicf("redis failed to set key(%s): %s", key, err)
+		}
 	}
 	log.Printf("stored to redis, key=%s, val(some bytes), returned=%s",
 		key, ret)

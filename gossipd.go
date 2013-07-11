@@ -33,7 +33,6 @@ func handleConnection(conn *net.Conn) {
 		if r := recover(); r != nil {
 			log.Printf("got panic:(%s) will close connection from %s:%s", r, remoteAddr.Network(), remoteAddr.String())
 			debug.PrintStack()
-
 		}
 		if client != nil {
 			mqtt.ForceDisconnect(client, mqtt.G_clients_lock, mqtt.SEND_WILL)
