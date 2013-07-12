@@ -40,7 +40,7 @@ func ping_pong_redis(client *RedisClient, interval int) {
 	for _ = range c {
 		g_redis_lock.Lock()
 		(*client.Conn).Do("PING")
-		g_redis_lock.UnLock()
+		g_redis_lock.Unlock()
 		log.Printf("sent PING to redis")
 	}
 }
