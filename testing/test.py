@@ -16,8 +16,6 @@ from datetime import datetime
 from gossip_client import GossipClient
 from pprint import pprint
 
-
-
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(module)s-%(funcName)s(%(lineno)d): %(message)s",
                     level = logging.DEBUG, stream = sys.stderr)
 _logger = logging.getLogger('root')
@@ -34,7 +32,7 @@ class TestWorker(object):
         self.thread_num = thread_num
         self.hostname = hostname
         self.port = port
-        self.client = GossipClient(client_id = self.client_id, clean_session = True)
+        self.client = GossipClient(client_id = self.client_id, clean_session = False)
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_publish = self.on_publish
@@ -50,16 +48,15 @@ class TestWorker(object):
             _logger.error('worker %d on_connect, rc=%d' % (self.worker_id, rc))
 
     def on_disconnect(self, mosq, obj, rc):
-        global g_active_client_num
         if rc == 0:
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
             _logger.error('worker %d lost connection to server' % self.worker_id)
 
         if not self.subscribe_done:
-            _logger.error('worker %d not done subscription and lost connection, will decrement active client number',
+            _logger.error('worker %d not done subscription and lost connection, will retry',
                           self.worker_id)
-            g_active_client_num -= 1
+            self._do_stuff(self.message_num)
 
     def on_publish(self, mosq, obj, mid):
         return
@@ -83,11 +80,13 @@ class TestWorker(object):
         _logger.debug('worker %d got message, topic=(%s), payload=(%s)' % 
                       (self.worker_id, msg.topic, msg.payload))
 
-    def start_listening(self, message_num):
-        self.status = self._build_status()
-        self.client.connect(self.hostname, self.port, keepalive=6000)
+    def _do_stuff(self, message_num):
+        ret = self.client.connect(self.hostname, self.port, keepalive=6000)
+        if ret != 0:
+            _logger.error("worker %d connect() returned %d" % (self.worker_id, ret))
+            return self._do_stuff(message_num)
 
-        topic = str(self.worker_id)
+        topic = "%s-%d" % (socket.gethostname(), self.worker_id)
         self.subscribe_done = False
         self.client.subscribe(topic, qos=1)
 
@@ -99,19 +98,27 @@ class TestWorker(object):
             ret = self.client.loop()
             if ret != 0:
                 _logger.error("worker %d loop() failed, returned %d" % (self.worker_id, ret))
-                #sys.exit(0)
-                break
+                return self._do_stuff(message_num)
+
             now = time.time()
             if g_publish_finish_time is not None:
                 late = (now - g_publish_finish_time)
-                if late > 10.0:
+                if late > 60.0:
                     _logger.debug("worker %d: too long waiting for message, quit with %d received" % (self.worker_id, len(self.status)))
-                    break
+                    return self._do_stuff(message_num)
                 else:
                     _logger.debug("worker %d, %.3f seconds late" % (self.worker_id, late))
-
+                    
+        g_subscribe_done.add(self.worker_id)
+        self.subscribe_done = True
         self.client.disconnect()
-        
+
+
+    def start_listening(self, message_num):
+        self.status = self._build_status()
+        self.message_num = message_num
+        self._do_stuff(message_num)
+
     def _build_status(self):
         return list()
 
@@ -151,7 +158,7 @@ def create_publisher(message_num, thread_num, hostname, port):
     for i in xrange(message_num):
         for j in xrange(thread_num):
             now = time.time()
-            client.publish(topic=str(j+1), payload=str(now), qos=1)
+            client.publish(topic="%s-%d" % (socket.gethostname(), j+1), payload=str(now), qos=1)
             count = i *  thread_num + j
             if count % 100 == 0:
                 _logger.debug("published %d messages" % count)

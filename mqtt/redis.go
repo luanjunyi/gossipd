@@ -56,10 +56,10 @@ func (client* RedisClient) Reconnect() {
 }
 
 func (client *RedisClient) Store(key string, value interface{}) {
-	log.Printf("aqquiring g_redis_lock")
+	log.Printf("aqquiring g_redis_lock, store key=(%s)", key)
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
-	log.Printf("aqquired g_redis_lock")
+	log.Printf("aqquired g_redis_lock, store key=(%s)", key)
 
 	client.StoreNoLock(key, value)
 }
@@ -87,10 +87,10 @@ func (client *RedisClient) StoreNoLock(key string, value interface{}) {
 }
 
 func (client *RedisClient) Fetch(key string, value interface{}) int {
-	log.Printf("aqquiring g_redis_lock")
+	log.Printf("aqquiring g_redis_lock, fetch key=(%s)", key)
 	g_redis_lock.Lock()
 	defer g_redis_lock.Unlock()
-	log.Printf("aqquired g_redis_lock")
+	log.Printf("aqquired g_redis_lock, fetch key=(%s)", key)
 
 	return client.FetchNoLock(key, value)
 }
@@ -112,7 +112,7 @@ func (client *RedisClient) FetchNoLock(key string, value interface{}) int {
 	err = dec.Decode(value)
 
 	if (err != nil) {
-		log.Panic("gob decode failed:", err)
+		log.Panicf("gob decode failed, key=(%s), value=(%s), error:%s", key, str, err)
 	}
 	return 0
 }
@@ -140,14 +140,14 @@ func (client *RedisClient) GetRetainMessage(topic string) *MqttMessage {
 	var internal_id uint64
 	ret := client.Fetch(key, &internal_id)
 	if ret != 0 {
-		fmt.Printf("retained message internal id not found in redis for topic(%s)", topic)
+		log.Printf("retained message internal id not found in redis for topic(%s)", topic)
 		return nil
 	}
 
 	key = fmt.Sprintf("gossipd.mqtt-msg.%d", internal_id)
 	ret = client.Fetch(key, &msg)
 	if ret != 0 {
-		fmt.Printf("retained message, though internal id found, not found in redis for topic(%s)", topic)
+		log.Printf("retained message, though internal id found, not found in redis for topic(%s)", topic)
 		return nil
 	}
 	return msg

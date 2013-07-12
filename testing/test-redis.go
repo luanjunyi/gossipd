@@ -26,10 +26,12 @@ func main() {
 	defer c.Close()
 
 	v, err := redis.Int64(c.Do("GET", "target"))
-	fmt.Println("val", v, err)
+	fmt.Printf("val:(%d), err:(%s)\n", v, err)
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	return
 
 	ret, _ := redis.Values(c.Do("KEYS", "*"))
 	for _, key := range(ret) {

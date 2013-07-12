@@ -6,6 +6,7 @@ import (
 	"time"
 	"sync"
 	"fmt"
+	"runtime/debug"
 )
 
 const (
@@ -308,6 +309,14 @@ func MqttSendToClient(bytes []byte, conn *net.Conn, lock *sync.Mutex) {
 
 /* Checking timeout */
 func CheckTimeout(client *ClientRep) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("got panic, will print stack")
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
+
 	interval := client.Mqtt.KeepAliveTimer
 	client_id := client.ClientId
 	ticker := time.NewTicker(time.Duration(interval) * time.Second)
@@ -501,6 +510,15 @@ func DeliverMessage(dest_client_id string, qos uint8, msg *MqttMessage) {
 }
 
 func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("got panic, will print stack")
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
+
+
 	log.Printf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
 
 	// Get effective qos: the smaller of the publisher and the subscriber
@@ -518,6 +536,14 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 }
 
 func RetryDeliver(sleep uint64, dest_client_id string, qos uint8, msg *MqttMessage) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("got panic, will print stack")
+			debug.PrintStack()
+			panic(r)
+		}
+	}()
+
 	if sleep > 3600 * 4 {
 		log.Printf("too long retry delay(%s), abort retry deliver", sleep)
 		return
