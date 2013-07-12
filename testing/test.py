@@ -143,8 +143,8 @@ def create_publisher(message_num, thread_num, hostname, port):
 
     def _on_disconnect(mosq, obj, rc):
         if rc != 0:
-            _logger.fatal('publisher lost connection to server')
-            sys.exit(0)
+            _logger.fatal('publisher lost connection to server, will reconnect')
+            create_publisher(message_num, thread_num, hostname, port)
 
 
     pub_id = "publisher-%s" % (socket.gethostname())
@@ -164,8 +164,8 @@ def create_publisher(message_num, thread_num, hostname, port):
                 _logger.debug("published %d messages" % count)
             ret = client.loop(10.0) # Mosquitto won't work without this sleep
             if ret != 0:
-                _logger.fatal("publish loop returned %d" % ret)
-                sys.exit(0)
+                _logger.fatal("publish loop returned %d, will retry" % ret)
+                return create_publisher(message_num, thread_num, hostname, port)
 
     while len(published) < message_num * thread_num:
         _logger.debug("published %d" % len(published))

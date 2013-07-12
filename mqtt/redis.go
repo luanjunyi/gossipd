@@ -38,7 +38,9 @@ func StartRedisClient() *RedisClient {
 func ping_pong_redis(client *RedisClient, interval int) {
 	c := time.Tick(time.Duration(interval) * time.Second)
 	for _ = range c {
+		g_redis_lock.Lock()
 		(*client.Conn).Do("PING")
+		g_redis_lock.UnLock()
 		log.Printf("sent PING to redis")
 	}
 }

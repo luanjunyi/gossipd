@@ -25,7 +25,11 @@ func main() {
 
 	defer c.Close()
 
-	v, err := redis.Int64(c.Do("GET", "target"))
+	v, err := c.Do("PING")
+	fmt.Printf("val:(%s), err:(%s)\n", v, err)
+
+
+	v, err = redis.Int64(c.Do("GET", "target"))
 	fmt.Printf("val:(%d), err:(%s)\n", v, err)
 	if err != nil {
 		fmt.Println(err)
