@@ -32,7 +32,7 @@ class TestWorker(object):
         self.thread_num = thread_num
         self.hostname = hostname
         self.port = port
-        self.client = GossipClient(client_id = self.client_id, clean_session = False)
+        self.client = GossipClient(client_id = self.client_id, clean_session = True)
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_publish = self.on_publish
