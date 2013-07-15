@@ -391,7 +391,6 @@ func ForceDisconnect(client *ClientRep, lock *sync.Mutex, send_will uint8) {
 		log.Debugf("lock released")
 	}
 
-
 	// FIXME: Send will if requested
 	if send_will == SEND_WILL && client.Mqtt.ConnectFlags.WillFlag {
 		will_topic := client.Mqtt.WillTopic
