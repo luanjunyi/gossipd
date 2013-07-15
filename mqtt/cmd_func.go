@@ -517,7 +517,6 @@ func Deliver(dest_client_id string, dest_qos uint8, msg *MqttMessage) {
 		}
 	}()
 
-
 	log.Debugf("Delivering msg(internal_id=%d) to client(%s)", msg.InternalId, dest_client_id)
 
 	// Get effective qos: the smaller of the publisher and the subscriber
