@@ -492,7 +492,6 @@ func DeliverMessage(dest_client_id string, qos uint8, msg *MqttMessage) {
 	
 	bytes, _ := Encode(resp)
 
-
 	lock.Lock()
 	defer func() {
 		lock.Unlock()
