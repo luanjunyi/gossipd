@@ -24,6 +24,7 @@ g_publish_finish_time = None
 g_subscribe_finish_time = None
 g_subscribe_done = set()
 g_active_client_num = 0
+g_lost_connection_count
 
 class TestWorker(object):
     def __init__(self, worker_id, thread_num, hostname, port):
@@ -48,9 +49,12 @@ class TestWorker(object):
             _logger.error('worker %d on_connect, rc=%d' % (self.worker_id, rc))
 
     def on_disconnect(self, mosq, obj, rc):
+        global g_lost_connection_count
+
         if rc == 0:
             _logger.debug('worker %d disconnected normally' % self.worker_id)
         else:
+            g_lost_connection_count += 1
             _logger.error('worker %d lost connection to server' % self.worker_id)
 
         if not self.subscribe_done:
@@ -142,8 +146,10 @@ def create_publisher(message_num, thread_num, hostname, port):
         #_logger.debug('got publish ack %d' % mid)
 
     def _on_disconnect(mosq, obj, rc):
+        global g_lost_connection_count
         if rc != 0:
-            _logger.fatal('publisher lost connection to server, will reconnect')
+            _logger.error('publisher lost connection to server, will reconnect')
+            g_lost_connection_count += 1
             create_publisher(message_num, thread_num, hostname, port)
 
 
@@ -243,7 +249,7 @@ def main():
     min = np.min(data) * 1000
     std = np.std(data) * 1000
 
-    print "%.2f %.2f %.2f %.2f" % (mean, std, max, min)
+    print "avg:%.2f stddev:%.2f min:%.2f max%.2f lost-conn:%d" % (mean, std, max, min, g_lost_connection_count)
 
     _logger.info("testing finsished")
 
