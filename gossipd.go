@@ -12,8 +12,8 @@ import (
 
 type CmdFunc func(mqtt *mqtt.Mqtt, conn *net.Conn, client **mqtt.ClientRep)
 
-var g_debug = flag.Bool("d", false, "enable debug message")
-var g_port = flag.Int("p", 2001, "port of the broker to listen")
+var g_debug = flag.Bool("d", false, "enable debugging log")
+var g_port = flag.Int("p", 1883, "port of the broker to listen")
 var g_redis_port = flag.Int("r", 6379, "port of the broker to listen")
 
 var g_cmd_route = map[uint8]CmdFunc {
@@ -75,16 +75,20 @@ func handleConnection(conn *net.Conn) {
 }
 
 func setup_logging() {
-	config := `
-<seelog type="sync">
+    level := "info"
+	if *g_debug == true {
+		level = "debug"
+	}
+	config := fmt.Sprintf(`
+<seelog type="sync" minlevel="%s">
 	<outputs formatid="main">
 		<console/>
 	</outputs>
 	<formats>
-		<format id="main" format="%Date %Time [%LEVEL] %File|%FuncShort|%Line: %Msg%n"/>
+		<format id="main" format="%%Date %%Time [%%LEVEL] %%File|%%FuncShort|%%Line: %%Msg%%n"/>
 	</formats>
-</seelog>`
-	
+</seelog>`, level)
+
 	logger, err := log.LoggerFromConfigAsBytes([]byte(config))
 
 	if err != nil {
