@@ -1,15 +1,15 @@
 #What is Gossipd?#
-Gossipd is an implementation of [MQTT 3.1](http://public.dhe.ibm.com/software/dw/webservices/ws-mqtt/mqtt-v3r1.html) broker written in Go. MQTT is an excellent protocal for mobile messaging. Facebook built the new Facebook Messager based on MQTT.
+Gossipd is an implementation of [MQTT 3.1](http://public.dhe.ibm.com/software/dw/webservices/ws-mqtt/mqtt-v3r1.html) broker written in Go. MQTT is an excellent protocol for mobile messaging. Facebook built the new Facebook Messager with MQTT.
 
 #What is Gossipd for?#
-The main reason I'm writting this is because all major open source MQTT brokers, like [Mosquitto](http://mosquitto.org/) didn't balance well between scalability and ease of maintaining.
+The main reason I'm writing this is because all major open source MQTT brokers, like [Mosquitto](http://mosquitto.org/), didn't balance well between scalability and ease of use.
 
-Gossipd should be considered when the 'select' based Mosquitto can't meet your scale requirement, yet only the 'basic' part(see [Not supported features](#unsupported) for detail) of MQTT is needed in your project. Gossipd is built with profermance at heart.
+Gossipd should be considered when the 'select' based Mosquitto can't meet your scale requirement, yet only the 'basic' part(see [Not supported features](#unsupported) for detail) of MQTT is needed in your project. Gossipd is built with performance at heart.
 
 #Usage#
-Super simple. Just run 
+To use Gossipd, run:
 
->go run gossipd 
+>go run gossipd
 
 The broker will start and listen on port 1883 for MQTT traffic. Command line flags:
 
